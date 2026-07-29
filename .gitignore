@@ -1,0 +1,59 @@
+# MacSkillet .gitignore
+
+# ── NEVER commit these ────────────────────────────────────────────────────
+data/samples/           # malware samples — never commit
+data/*.jsonl            # bulk analysis results — may contain sensitive paths
+data/*.csv              # ground truth labels
+*.skill                 # packaged skill files (generated)
+
+# ── API keys & secrets ────────────────────────────────────────────────────
+.env
+.env.local
+*.key
+secrets.json
+
+# ── Analysis artifacts ────────────────────────────────────────────────────
+/tmp/certs/             # extracted certificates
+reports/                # generated reports
+*.report.json
+
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.venv/
+env/
+
+# ── macOS ─────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# ── Editor ────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Test artifacts ────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── Keep these empty dirs ────────────────────────────────────────────────
+!data/samples/.gitkeep
+!data/.gitkeep
+
+# ── Packaging ─────────────────────────────────────────────────────────────
+build/
+dist/
+*.egg-info/
+.venv/
+uv.lock

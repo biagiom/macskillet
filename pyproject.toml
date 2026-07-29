@@ -1,0 +1,82 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "macskillet"
+version = "0.1.0"
+description = "Agentic AI static analysis and malware classification for macOS apps and Mach-O binaries"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Biagio Montaruli", email = "biagio.hkr@gmail.com" }]
+keywords = ["macos", "malware", "mach-o", "static-analysis", "agentic-ai", "dfir", "clickfix"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+]
+
+# The native pipeline uses only tools that ship with macOS. Nothing here is
+# required to extract features or run `macskillet --features-only`.
+dependencies = []
+
+[project.optional-dependencies]
+claude   = ["anthropic>=0.40.0"]    # Claude API modes (react, hierarchical, react_thinking)
+ollama   = ["ollama>=0.3.0"]        # local LLM inference (--ollama)
+apple    = ["apple-fm-sdk>=0.1.0"]  # Apple Foundation Models (--apple, macOS 26+)
+detector = [
+    "lief>=0.14.0",
+    "cryptography>=41.0",   # X.509 parsing + signature verification
+    "asn1crypto>=1.5.0",    # CMS/PKCS#7 parsing for the embedded code signature
+]  # cross-platform Mach-O + full offline code-signature verification
+ml       = [                        # classical-ML baseline used for the OBTS comparison
+    "lief>=0.14.0",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scikit-learn>=1.3",
+    "cryptography>=41.0",
+    "asn1crypto>=1.5.0",    # CertInfoFeatures delegates to code_signature_verifier
+]
+all = ["macskillet[claude,detector,ml]"]
+
+[project.urls]
+Homepage = "https://github.com/biagiom/macskillet"
+Repository = "https://github.com/biagiom/macskillet"
+Issues = "https://github.com/biagiom/macskillet/issues"
+
+[project.scripts]
+macskillet = "macskillet.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-timeout>=2.0.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/macskillet"]
+# Pinned Apple root/intermediate certs used for offline code-signature chain
+# verification (machopy/certs/*.cer). Not Python source, so hatchling's
+# default file selection needs an explicit nudge to ship them in the wheel.
+artifacts = ["src/macskillet/machopy/certs/*.cer"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/macskillet", "tests", "docs", "skills", "README.md", "LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Integration tests shell out to the real macOS toolchain. They are opt-in:
+#   pytest -m integration
+addopts = "-m 'not integration'"
+markers = [
+    "integration: exercises the real macOS toolchain (requires macOS)",
+]

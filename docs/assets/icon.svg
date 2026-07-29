@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 140" role="img" aria-label="MacSkillet icon">
+  <defs>
+    <linearGradient id="skilletGrad" x1="6" y1="6" x2="134" y2="134" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0097A7"/><stop offset="1" stop-color="#8cc63f"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="128" height="128" rx="30" fill="url(#skilletGrad)"/>
+  <line x1="83" y1="62" x2="116" y2="52" stroke="#fff" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="51" cy="70" r="33" fill="#fff"/>
+  <circle cx="90" cy="60.5" r="2.6" fill="url(#skilletGrad)"/>
+  <circle cx="51" cy="70" r="24.5" fill="none" stroke="url(#skilletGrad)" stroke-width="2.4" opacity=".45"/>
+  <path d="M42 54h14l8 8v20a4 4 0 0 1-4 4H42a4 4 0 0 1-4-4V58a4 4 0 0 1 4-4z" fill="url(#skilletGrad)"/>
+  <path d="M56 54v8h8" fill="none" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"/>
+  <rect x="43" y="66" width="16" height="4" rx="2" fill="#fff"/>
+  <rect x="43" y="72" width="10" height="4" rx="2" fill="#fff"/>
+  <rect x="43" y="78" width="13" height="4" rx="2" fill="#fff"/>
+</svg>
