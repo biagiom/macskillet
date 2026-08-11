@@ -13,7 +13,7 @@ Usage:
     python bundle_classifier.py --batch /path/to/samples/ --output results.jsonl
 
 Requirements:
-    uv sync --extra claude --extra detector
+    uv sync --extra claude --extra portable
     export ANTHROPIC_API_KEY=your_key
 """
 
@@ -23,8 +23,8 @@ import os
 import sys
 from pathlib import Path
 
-from macskillet.detector.feature_extractor import extract, is_macho
-from macskillet.detector.agent_runner import run_agent
+from macskillet.portable.feature_extractor import extract, is_macho
+from macskillet.portable.agent_runner import run_agent
 
 
 VERDICT_COLORS = {

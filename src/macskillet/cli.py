@@ -6,7 +6,7 @@ answers tool calls) and the mode (how the agent reasons) are independent
 choices::
 
     macskillet App.app                          # auto backend, react mode
-    macskillet App.app --backend detector       # force cross-platform
+    macskillet App.app --backend portable       # force cross-platform
     macskillet App.app --mode hierarchical      # cheaper on benign-heavy sets
     macskillet App.app --features-only --pretty # extraction only, no API call
     macskillet --batch samples/ -o results.jsonl
@@ -40,9 +40,9 @@ def _build_parser() -> argparse.ArgumentParser:
     group = parser.add_argument_group("analysis")
     group.add_argument(
         "--backend",
-        choices=["auto", "native", "detector"],
+        choices=["auto", "native", "portable"],
         default="auto",
-        help="feature-extraction pipeline (default: auto — native on macOS, detector elsewhere)",
+        help="feature-extraction pipeline (default: auto — native on macOS, portable elsewhere)",
     )
     group.add_argument("--mode", choices=MODES, default="react", help="agentic mode (default: react)")
     group.add_argument(
@@ -64,9 +64,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _list_backends() -> int:
-    from macskillet.backends import DETECTOR, NATIVE
+    from macskillet.backends import NATIVE, PORTABLE
 
-    for backend in (NATIVE, DETECTOR):
+    for backend in (NATIVE, PORTABLE):
         reason = backend.unavailable_reason()
         status = "available" if reason is None else f"unavailable — {reason}"
         print(f"{backend.name:9s} {status}")

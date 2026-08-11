@@ -10,7 +10,7 @@ output schema:
     Reads quarantine xattrs, Gatekeeper verdicts, notarization staples and
     download provenance, none of which are recoverable from the file alone.
 
-``macskillet.detector``
+``macskillet.portable``
     Runs anywhere. Parses Mach-O with LIEF via :mod:`macskillet.machopy`.
     Loses the OS-mediated signals above, keeps everything derivable from bytes.
 

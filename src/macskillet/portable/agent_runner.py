@@ -20,8 +20,8 @@ import anthropic
 
 from macskillet import DEFAULT_CLAUDE_MODEL
 
-from macskillet.detector.tool_dispatcher import TOOLS, dispatch_tool
-from macskillet.detector.feature_extractor import extract
+from macskillet.portable.tool_dispatcher import TOOLS, dispatch_tool
+from macskillet.portable.feature_extractor import extract
 
 # ---------------------------------------------------------------------------
 # System prompt for the analyst agent

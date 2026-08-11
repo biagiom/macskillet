@@ -6,8 +6,8 @@ from unittest.mock import patch
 import pytest
 
 from macskillet.backends import (
-    DETECTOR,
     NATIVE,
+    PORTABLE,
     Backend,
     BackendUnavailable,
     available_backends,
@@ -32,11 +32,11 @@ def test_native_unavailable_off_macos():
     assert "macOS" in reason
 
 
-def test_auto_falls_back_to_detector_off_macos():
+def test_auto_falls_back_to_portable_off_macos():
     with patch("macskillet.backends.platform.system", return_value="Linux"):
-        if not DETECTOR.is_available():
+        if not PORTABLE.is_available():
             pytest.skip("LIEF not installed")
-        assert select_backend().name == "detector"
+        assert select_backend().name == "portable"
 
 
 def test_explicit_backend_is_never_silently_downgraded():
@@ -60,8 +60,8 @@ def test_unknown_backend_name_rejected():
 def test_no_backend_available_raises_with_reasons():
     # Backend is a frozen dataclass, so swap the registry rather than the fields.
     dead_native = _stub_backend(name="native", _check=lambda: "no macOS")
-    dead_detector = _stub_backend(name="detector", _check=lambda: "no LIEF")
-    with patch("macskillet.backends._ORDER", (dead_native, dead_detector)):
+    dead_portable = _stub_backend(name="portable", _check=lambda: "no LIEF")
+    with patch("macskillet.backends._ORDER", (dead_native, dead_portable)):
         with pytest.raises(BackendUnavailable) as exc:
             select_backend()
     message = str(exc.value)

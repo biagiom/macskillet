@@ -45,8 +45,8 @@ bash quick_risk.sh /path/to/App.app
 
 Cross-platform (Linux/Windows, no macOS toolchain):
 ```bash
-uv sync --extra detector
-macskillet --backend detector -f /path/to/binary --pretty
+uv sync --extra portable
+macskillet --backend portable -f /path/to/binary --pretty
 ```
 
 ## Output

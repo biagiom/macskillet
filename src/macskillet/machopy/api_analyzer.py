@@ -8,7 +8,7 @@ import warnings
 
 # pandas is only needed by the dataset-iteration helpers below, which are
 # research utilities rather than part of the analysis path. Importing it at
-# module scope made `detector`-only installs fail to read entitlements and
+# module scope made `portable`-only installs fail to read entitlements and
 # certificates at all -- silently, since callers catch ImportError.
 def _pandas():
     import pandas as pd

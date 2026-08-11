@@ -149,7 +149,7 @@ TOOLS = [
 
 
 # ---------------------------------------------------------------------------
-# Inline API risk DB (same as detector/tools.py)
+# Inline API risk DB (same as portable/tool_dispatcher.py)
 # ---------------------------------------------------------------------------
 
 API_RISK_DB = {

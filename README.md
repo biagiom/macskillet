@@ -43,7 +43,7 @@ MacSkillet ships two feature-extraction backends behind one interface:
 | Backend | Requires | Sees |
 |---|---|---|
 | `native` | macOS 12+, Xcode CLI tools | Everything below **plus** quarantine xattrs, Gatekeeper verdict, notarization staple, download provenance, ObjC class/method names, DRM encryption state |
-| `detector` | LIEF (any OS) | Mach-O structure, imports, segment entropy, entitlements, strings, bundle layout, offline code-signature verification |
+| `portable` | LIEF (any OS) | Mach-O structure, imports, segment entropy, entitlements, strings, bundle layout, offline code-signature verification |
 
 Both backends expose the same tool contract, so every agentic mode runs unchanged against
 either one:
@@ -55,11 +55,11 @@ macskillet --list-backends
 ```
 native    available
           macOS built-in tooling; zero pip dependencies; sees OS-held signals
-detector  available
+portable  available
           LIEF-based; runs on any OS; sees everything derivable from bytes
 ```
 
-The backend is selected automatically — `native` on a working macOS host, `detector`
+The backend is selected automatically — `native` on a working macOS host, `portable`
 everywhere else. An explicit `--backend` is never silently downgraded: swapping backends
 changes which signals are observable, and therefore what a verdict means.
 
@@ -143,7 +143,7 @@ Base64 candidates are validated by decode + entropy + a compiler-mangled-symbol 
 pip install "macskillet[claude]"
 
 # Non-macOS host, or bulk cross-platform pipelines
-pip install "macskillet[claude,detector]"
+pip install "macskillet[claude,portable]"
 
 # Local inference instead of the API
 pip install "macskillet[ollama]"
@@ -180,7 +180,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 macskillet /path/to/App.app --pretty
 
 # Force the cross-platform backend
-macskillet /path/to/binary --backend detector --pretty
+macskillet /path/to/binary --backend portable --pretty
 
 # Cheaper triage-first mode, good on benign-heavy corpora
 macskillet /path/to/App.app --mode hierarchical
@@ -218,7 +218,7 @@ Every report is JSON with these top-level fields:
 | `obfuscation_detection` | Packing result: techniques, entropy, packer signatures |
 | `agent_tool_calls` | Full audit log of every tool call the agent made |
 | `inference_backend` | `claude`, `ollama/<model>`, or `apple_foundation_models` |
-| `extraction_backend` | `native` or `detector` |
+| `extraction_backend` | `native` or `portable` |
 
 Full schema: [`docs/references-machopy/output-schema.md`](docs/references-machopy/output-schema.md)
 
@@ -229,7 +229,7 @@ Full schema: [`docs/references-machopy/output-schema.md`](docs/references-machop
 ```python
 from macskillet.backends import select_backend
 
-backend = select_backend()                     # or select_backend("detector")
+backend = select_backend()                     # or select_backend("portable")
 features = backend.extract("/path/to/App.app") # no model call
 verdict  = backend.classify("/path/to/App.app", mode="react")
 ```
@@ -285,6 +285,8 @@ Never commit malware samples. `data/samples/` is gitignored and intentionally em
 - [`docs/references-machopy/api-risk-db.md`](docs/references-machopy/api-risk-db.md) — API symbol risk database
 - [`docs/references-machopy/output-schema.md`](docs/references-machopy/output-schema.md) — JSON report schema
 - [`docs/references-machopy/code-signature-verification.md`](docs/references-machopy/code-signature-verification.md) — the four-link offline signature verifier
+- [`docs/usage-guide.html`](docs/usage-guide.html) — interactive HTML usage guide
+- [`DEVELOPMENT.md`](DEVELOPMENT.md) — architecture decisions, roadmap, known issues
 
 ---
 

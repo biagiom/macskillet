@@ -9,7 +9,7 @@ xcode-select --install
 # Install Python deps (pick what you need)
 uv sync --extra claude           # Claude API mode
 uv sync --extra ollama            # Ollama local LLM mode
-uv sync --extra detector         # cross-platform detector (LIEF)
+uv sync --extra portable         # cross-platform portable backend (LIEF)
 uv sync --group dev              # tests only
 uv sync --all-extras --group dev # everything
 
@@ -107,15 +107,15 @@ bash src/macskillet/native/quick_risk.sh /path/to/App.app
 
 ---
 
-## Cross-Platform Detector (Linux / Windows)
+## Cross-Platform Portable Backend (Linux / Windows)
 
 ```bash
-pip install "macskillet[claude,detector]"
+pip install "macskillet[claude,portable]"
 export ANTHROPIC_API_KEY="sk-ant-..."
-macskillet /path/to/binary --backend detector --pretty
-macskillet --batch /path/to/samples/ --backend detector -o results.jsonl
+macskillet /path/to/binary --backend portable --pretty
+macskillet --batch /path/to/samples/ --backend portable -o results.jsonl
 
-# On a non-macOS host the detector backend is chosen automatically:
+# On a non-macOS host the portable backend is chosen automatically:
 macskillet /path/to/binary --pretty
 macskillet --list-backends
 ```

@@ -11,7 +11,7 @@ Backend          Requires                    Sees
                                              notarization staple, download
                                              provenance, ObjC class/method
                                              names, DRM encryption state
-``detector``     LIEF (any OS)               Mach-O structure, imports,
+``portable``     LIEF (any OS)               Mach-O structure, imports,
                                              segment entropy, entitlements,
                                              strings, bundle layout
 ===============  ==========================  ==================================
@@ -19,7 +19,7 @@ Backend          Requires                    Sees
 The native backend is strictly more capable *on macOS* because several signals
 are held by the OS rather than the file — a stripped quarantine xattr is
 invisible to any amount of byte parsing. Off macOS those signals do not exist
-to be read, so the detector backend is not a degraded native backend, it is the
+to be read, so the portable backend is not a degraded native backend, it is the
 complete set of what is knowable from the artifact alone.
 
 Both expose the same tool-call contract, so every agent mode in
@@ -46,7 +46,7 @@ __all__ = [
     "available_backends",
     "select_backend",
     "NATIVE",
-    "DETECTOR",
+    "PORTABLE",
 ]
 
 
@@ -128,11 +128,11 @@ def _check_native() -> str | None:
     return None
 
 
-def _check_detector() -> str | None:
+def _check_portable() -> str | None:
     try:
         import lief  # noqa: F401
     except ImportError:
-        return "LIEF not installed (pip install 'macskillet[detector]')"
+        return "LIEF not installed (pip install 'macskillet[portable]')"
     return None
 
 
@@ -162,20 +162,20 @@ def _native_dispatch(features: dict, name: str, payload: dict) -> dict:
     return dispatch_tool(features, name, payload)
 
 
-def _detector_extract(path: str) -> dict:
-    from macskillet.detector.feature_extractor import extract
+def _portable_extract(path: str) -> dict:
+    from macskillet.portable.feature_extractor import extract
 
     return extract(path)
 
 
-def _detector_tools() -> list:
-    from macskillet.detector.tool_dispatcher import TOOLS
+def _portable_tools() -> list:
+    from macskillet.portable.tool_dispatcher import TOOLS
 
     return TOOLS
 
 
-def _detector_dispatch(features: dict, name: str, payload: dict) -> dict:
-    from macskillet.detector.tool_dispatcher import dispatch_tool
+def _portable_dispatch(features: dict, name: str, payload: dict) -> dict:
+    from macskillet.portable.tool_dispatcher import dispatch_tool
 
     return dispatch_tool(features, name, payload)
 
@@ -189,17 +189,17 @@ NATIVE = Backend(
     _check=_check_native,
 )
 
-DETECTOR = Backend(
-    name="detector",
+PORTABLE = Backend(
+    name="portable",
     description="LIEF-based; runs on any OS; sees everything derivable from bytes",
-    _extract=_detector_extract,
-    _tools=_detector_tools,
-    _dispatch=_detector_dispatch,
-    _check=_check_detector,
+    _extract=_portable_extract,
+    _tools=_portable_tools,
+    _dispatch=_portable_dispatch,
+    _check=_check_portable,
 )
 
 #: Preference order used by :func:`select_backend`.
-_ORDER = (NATIVE, DETECTOR)
+_ORDER = (NATIVE, PORTABLE)
 
 _BY_NAME = {b.name: b for b in _ORDER}
 
@@ -212,13 +212,13 @@ def available_backends() -> list[Backend]:
 def select_backend(prefer: str | None = None) -> Backend:
     """Return the backend to use.
 
-    ``prefer`` names a backend explicitly (``"native"`` or ``"detector"``) and
+    ``prefer`` names a backend explicitly (``"native"`` or ``"portable"``) and
     raises :class:`BackendUnavailable` if that one cannot run — an explicit
-    request is never silently downgraded, because a native-vs-detector swap
+    request is never silently downgraded, because a native-vs-portable swap
     changes which signals are observable and therefore what a verdict means.
 
     With ``prefer=None`` the best available backend is chosen: native on a
-    working macOS host, detector everywhere else.
+    working macOS host, portable everywhere else.
     """
     if prefer is not None:
         backend = _BY_NAME.get(prefer)

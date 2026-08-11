@@ -33,7 +33,7 @@ dependencies = []
 claude   = ["anthropic>=0.40.0"]    # Claude API modes (react, hierarchical, react_thinking)
 ollama   = ["ollama>=0.3.0"]        # local LLM inference (--ollama)
 apple    = ["apple-fm-sdk>=0.1.0"]  # Apple Foundation Models (--apple, macOS 26+)
-detector = [
+portable = [
     "lief>=0.14.0",
     "cryptography>=41.0",   # X.509 parsing + signature verification
     "asn1crypto>=1.5.0",    # CMS/PKCS#7 parsing for the embedded code signature
@@ -46,7 +46,7 @@ ml       = [                        # classical-ML baseline used for the OBTS co
     "cryptography>=41.0",
     "asn1crypto>=1.5.0",    # CertInfoFeatures delegates to code_signature_verifier
 ]
-all = ["macskillet[claude,detector,ml]"]
+all = ["macskillet[claude,portable,ml]"]
 
 [project.urls]
 Homepage = "https://github.com/biagiom/macskillet"

@@ -2,7 +2,8 @@
 macho_analyzer.py — LIEF-based Mach-O static analysis.
 
 Direct binary parsing via LIEF.
-Produces an arch-keyed dict consumed by the agent tool layer (src/detector/tools.py).
+Produces an arch-keyed dict consumed by the agent tool layer
+(src/macskillet/portable/tool_dispatcher.py).
 """
 
 import collections
@@ -112,8 +113,8 @@ def analyze_macho(binary_path: str) -> dict:
     """
     Parse a Mach-O binary (or FAT universal) with LIEF.
 
-    Returns an arch-keyed dict whose structure matches what src/detector/tools.py
-    expects.
+    Returns an arch-keyed dict whose structure matches what
+    src/macskillet/portable/tool_dispatcher.py expects.
 
     Schema per arch key:
         {

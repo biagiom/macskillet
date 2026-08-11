@@ -373,7 +373,7 @@ class TestRealBinaries:
 class TestCodesignPathDistinguishesTamperFromAbsence:
     """codesign --verify failing means either "never signed" or "signed but
     broken" -- two very different things that both signature_analyzer.py
-    (machopy, used by the detector pipeline) and extract_features_native.py
+    (machopy, used by the portable pipeline) and extract_features_native.py
     (native pipeline) must not conflate, or signature_trust's tamper gate can
     never fire on the platform where codesign is authoritative.
     """

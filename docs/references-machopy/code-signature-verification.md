@@ -1,6 +1,6 @@
 # Offline Code-Signature Verification
 
-`src/macskillet/machopy/code_signature_verifier.py` lets the `detector` backend verify an
+`src/macskillet/machopy/code_signature_verifier.py` lets the `portable` backend verify an
 Apple code signature without macOS — not by reading certificate text, but by independently
 re-deriving the same cryptographic proof `codesign --verify` produces.
 
