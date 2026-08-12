@@ -7,14 +7,14 @@ that ALSO exhibits ClickFix-style delivery/exfil behavior must NOT receive the
 normal signing trust credit — the credit is revoked and a penalty applied.
 
 Run from repo root:
-    PYTHONPATH=src/native python3 -m pytest tests/test_signature_trust.py -v
+    python3 -m pytest tests/test_signature_trust.py -v
 """
 
 import sys
 import os
 
 
-from macskillet.native.signature_trust import assess_signature_trust
+from macskillet.common.signature_trust import assess_signature_trust
 
 
 def make_features(signing_status="unsigned", notarized=False, clickfix=None,

@@ -22,6 +22,7 @@ from macskillet.machopy.bundle_analyzer import analyze_bundle
 from macskillet.machopy.macho_analyzer import analyze_macho, is_macho, sha256, md5
 from macskillet.machopy.signature_analyzer import analyze_signature
 from macskillet.machopy.string_extractor import extract_strings_of_interest
+from macskillet.common.signature_trust import assess_signature_trust
 
 
 # ---------------------------------------------------------------------------
@@ -45,6 +46,7 @@ def extract(path: str) -> dict:
         "signature": None,
         "macho": None,
         "strings_of_interest": [],
+        "signature_trust": None,
         "errors": [],
     }
 
@@ -86,6 +88,16 @@ def extract(path: str) -> dict:
         features["errors"].append(f"Not a recognized Mach-O binary or .app bundle: {path}")
     else:
         features["errors"].append(f"Path does not exist: {path}")
+
+    # Score signing trust from the verification level analyze_signature() set
+    # (cryptographic / invalid / structural) — see macskillet.common.signature_trust
+    # for why unverified "signed" claims earn no credit. There is no clickfix
+    # detector on this pipeline yet, so the ClickFix-override gate simply never
+    # fires here; the verification gates still apply.
+    try:
+        features["signature_trust"] = assess_signature_trust(features)
+    except Exception as e:
+        features["errors"].append(f"Signature-trust assessment error: {e}")
 
     return features
 

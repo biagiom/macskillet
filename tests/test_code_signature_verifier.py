@@ -421,7 +421,7 @@ class TestCodesignPathDistinguishesTamperFromAbsence:
 
     def test_tamper_gate_fires_end_to_end_via_signature_trust(self, tmp_path):
         from macskillet.machopy.signature_analyzer import _analyze_with_codesign
-        from macskillet.native.signature_trust import assess_signature_trust
+        from macskillet.common.signature_trust import assess_signature_trust
 
         sig = _analyze_with_codesign(self._make_tampered_copy(tmp_path))
         result = assess_signature_trust({"signature": sig, "clickfix": {}})

@@ -671,7 +671,7 @@ def extract(path: str) -> dict:
     except ImportError:
         _has_obfuscation = False
     try:
-        from macskillet.native.signature_trust import assess_signature_trust
+        from macskillet.common.signature_trust import assess_signature_trust
         _has_signature_trust = True
     except ImportError:
         _has_signature_trust = False
