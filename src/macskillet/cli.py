@@ -51,6 +51,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="extract features and stop — no model call, no API key needed",
     )
     group.add_argument("--list-backends", action="store_true", help="show backend availability and exit")
+    group.add_argument(
+        "--deep", action="store_true",
+        help="statically analyze embedded bundle items too (AppleScripts, dylibs, helper "
+             "binaries), not just the main executable — default limit 10",
+    )
+    group.add_argument(
+        "--deep-limit", type=int, default=None, metavar="N",
+        help="max embedded items to deep-scan; passing this alone implies --deep",
+    )
 
     inference = parser.add_argument_group("inference")
     inference.add_argument("--ollama", action="store_true", help="local LLM via Ollama instead of the Claude API")
@@ -61,6 +70,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help=f"model id (default: {DEFAULT_CLAUDE_MODEL}, or qwen2.5:14b with --ollama)",
     )
     return parser
+
+
+def _resolve_deep_limit(args) -> int | None:
+    """Effective deep-scan limit: --deep-limit wins; --deep alone means 10; neither means off."""
+    return args.deep_limit if args.deep_limit is not None else (10 if args.deep else None)
 
 
 def _list_backends() -> int:
@@ -90,7 +104,7 @@ def _classify(features: dict, args, backend) -> dict:
 
         return run_agent_local(features, model=args.model or "qwen2.5:14b")
 
-    from macskillet.native.agent_modes import run_mode
+    from macskillet.common.agent_modes import run_mode
 
     return run_mode(features, mode=args.mode, backend=backend,
                     model=args.model or DEFAULT_CLAUDE_MODEL)
@@ -139,6 +153,8 @@ def main(argv: list[str] | None = None) -> int:
         print("[!] --ollama and --apple are mutually exclusive.", file=sys.stderr)
         return 1
 
+    deep_limit = _resolve_deep_limit(args)
+
     needs_api_key = not (args.features_only or args.ollama or args.apple)
     if needs_api_key and not os.environ.get("ANTHROPIC_API_KEY"):
         print(
@@ -157,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[*] Backend: {backend.name}", file=sys.stderr)
 
     if args.sample:
-        features = backend.extract(args.sample)
+        features = backend.extract(args.sample, deep_limit=deep_limit)
         if features.get("errors"):
             print(f"[!] {features['errors']}", file=sys.stderr)
         if args.features_only:
@@ -165,10 +181,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         report = _classify(features, args, backend)
-        report["clickfix_detection"] = features.get("clickfix")
         report["obfuscation_detection"] = features.get("obfuscation")
 
-        from macskillet.native.classify_bundle_native import print_report
+        from macskillet.common.report import print_report
 
         print_report(report)
         _emit(report, args)
@@ -187,12 +202,11 @@ def main(argv: list[str] | None = None) -> int:
         for index, path in enumerate(samples, start=1):
             print(f"\n[{index}/{len(samples)}] {path}", file=sys.stderr)
             try:
-                features = backend.extract(path)
+                features = backend.extract(path, deep_limit=deep_limit)
                 if args.features_only:
                     record = features
                 else:
                     record = _classify(features, args, backend)
-                    record["clickfix_detection"] = features.get("clickfix")
                     record["obfuscation_detection"] = features.get("obfuscation")
             except Exception as exc:
                 failures += 1

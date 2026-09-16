@@ -175,6 +175,6 @@ SCRIPTS=$(find "$TARGET" -name "*.sh" -o -name "*.py" -o -name "*.rb" 2>/dev/nul
 
 echo ""
 echo "${BOLD}════════════════════════════════════════════════${NC}"
-echo "  Triage complete. Run classify_bundle_native.py for AI verdict."
+echo "  Triage complete. Run 'macskillet' for AI verdict."
 echo "${BOLD}════════════════════════════════════════════════${NC}"
 echo ""

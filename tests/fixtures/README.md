@@ -5,15 +5,14 @@ real malware samples or API calls.
 
 ## Format
 
-Each `.json` file is a features dict as produced by `extract_features_native.py`.
+Each `.json` file is a features dict as produced by `feature_extractor.py`.
 The `sample.path` field will point to non-existent paths — that's expected for fixtures.
 
 ## Creating new fixtures
 
 ```bash
-cd src/native
-python3 classify_bundle_native.py /path/to/sample --features-only --pretty \
-  -o ../../tests/fixtures/sample_name.json
+macskillet /path/to/sample --features-only --pretty \
+  -o tests/fixtures/sample_name.json
 ```
 
 Then redact any sensitive paths before committing.
