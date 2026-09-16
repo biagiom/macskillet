@@ -7,7 +7,7 @@ The classifier is a pipeline of three loosely-coupled stages:
 ```
 [Static Feature Extraction] → [Agentic AI Loop] → [Classification Report]
         ↑                              ↑
-   native tools              tools_native.py (13 tools)
+   native tools              tools.py (13 tools)
    (no API calls)            dispatches back to features
 ```
 
@@ -16,11 +16,11 @@ JSON blob. The AI loop consumes that blob via tool calls and produces a JSON rep
 
 ---
 
-## Stage 1: Feature Extraction (`extract_features_native.py`)
+## Stage 1: Feature Extraction (`feature_extractor.py`)
 
 Entry point: `extract(path: str) -> dict`
 
-Runs 8 phases in sequence:
+Runs 7 phases in sequence:
 
 ```python
 features = {
@@ -28,20 +28,26 @@ features = {
     "preflight":   {...},   # file type, xattr, mdls metadata
     "bundle":      {...},   # Info.plist, structure, persistence
     "signature":   {...},   # codesign, spctl, xcrun stapler
-    "binary":      {...},   # otool, nm, lipo, strings
-    "clickfix":    {...},   # clickfix_detector output (auto)
-    "obfuscation": {...},   # obfuscation_detector output (auto)
-    "errors":      [...],
+    "binary":              {...},   # otool, nm, lipo (segments, symbols, entropy)
+    "strings_of_interest": [...],   # common/strings.py taxonomy — same top-level field on both pipelines
+    "obfuscation":         {...},   # obfuscation_detector output (auto)
+    "errors":              [...],
 }
 ```
 
 Each phase is implemented as a standalone function (`analyze_preflight`,
 `analyze_bundle`, `analyze_signature`, `analyze_binary`). They're called in
 sequence with error handling — a failure in one phase doesn't abort the others.
+`strings_of_interest` used to sit nested inside `analyze_binary()`'s own return dict
+(`features["binary"]["strings_of_interest"]`) — it's now relocated to the top level
+by `extract()` right after `analyze_binary()` runs, matching the portable pipeline's
+shape (which always had it flat).
 
-The two detectors (`clickfix_detector.py`, `obfuscation_detector.py`) are called
-at the end of `extract()` and receive the full features dict. They're lazy-imported
-with try/except so missing them doesn't break extraction.
+`obfuscation_detector.py` is called at the end of `extract()` and receives the full
+features dict. It's lazy-imported with try/except so a missing module doesn't break
+extraction. There is no dedicated ClickFix detector — ClickFix-style delivery
+indicators are covered by the shared suspicious-string taxonomy in `common/strings.py`
+(top-level `strings_of_interest`) plus obfuscation's `runonly_applescript` check.
 
 ### subprocess wrapper
 
@@ -57,7 +63,7 @@ isn't available (e.g. `xcrun` without Xcode installed).
 
 ---
 
-## Stage 2: Agent Tools (`tools_native.py`)
+## Stage 2: Agent Tools (`tools.py`)
 
 The 13 tools are the interface between the AI loop and the features blob.
 They don't run any subprocesses — they query the pre-extracted features JSON.
@@ -78,7 +84,7 @@ The AI agent is designed to handle these gracefully in its reasoning.
 1. Add schema entry to `TOOLS` list (Anthropic JSON schema format)
 2. Add implementation function: `def tool_new_name(features: dict, ...) -> dict`
 3. Add entry in `dispatch_tool()` dispatch table
-4. Update system prompt in `classify_bundle_native.py` to describe the tool
+4. Update system prompt in `common/agent_modes.py` to describe the tool
 
 The tool automatically becomes available in both Claude and Ollama modes.
 
@@ -86,9 +92,9 @@ The tool automatically becomes available in both Claude and Ollama modes.
 
 ## Stage 3: AI Agent Loop
 
-Two implementations with the same interface: `run_agent(features) -> dict`
+Two implementations with the same interface: given `features`, return a verdict `dict`.
 
-### Claude API (`classify_bundle_native.py` → `run_agent()`)
+### Claude API (`common/agent_modes.py` → `run_react()`)
 
 ```python
 client = anthropic.Anthropic()
@@ -136,36 +142,28 @@ If all fail, returns a default `SUSPICIOUS / LOW` verdict with a note for manual
 
 ---
 
-## ClickFix Detector (`clickfix_detector.py`)
+## ClickFix Detection (no dedicated module)
 
-Input: `features` dict
-Output: `dict` with `clickfix_suspected`, `confidence`, `delivery_chain`, `score`, `matched_indicators`
+There is no `clickfix_detector.py` — a dedicated detector existed briefly but was retired:
+its string-indicator table was fed from a separate, narrower pre-filter that made 82% of its
+own indicators unreachable, and its binary-signature scan duplicated
+`obfuscation_detector.py`'s packer detection (which scans the whole file, not just 64KB).
 
-### Scoring model
+ClickFix-style delivery is now detected via two already-general mechanisms:
+- **Suspicious strings** (`common/strings.py`, surfaced at top-level `strings_of_interest`):
+  quarantine tampering (`gatekeeper_bypass`), shell piping (`download_execute`),
+  `do shell script`/`osascript`/`applescript://` (`automation`), AMOS/Odyssey family markers
+  (`malware_family_marker`), TCC abuse, developer-secret harvesting, legitimate-cloud C2
+  abuse, and shell-config persistence.
+- **Run-only AppleScript detection** (`obfuscation_detector.py`'s `runonly_applescript`
+  check) — AMOS/ClickFix payloads ship run-only applets to hide their logic from static
+  analysis; this is detected via the `0xFADEDEAD` marker.
 
-Each matched indicator contributes to a cumulative score:
-- HIGH risk indicator: +3
-- MEDIUM risk indicator: +1
-- Binary in `/tmp/`: +5
-- Binary in `/tmp/` with no quarantine xattr: +6 (combined signal)
-- Binary signature match (e.g. `UPX!`): +5
-
-Thresholds:
-```
-score >= 12 → HIGH confidence
-score >= 6  → MEDIUM confidence
-score >= 3  → LOW confidence
-```
-
-### Delivery chain inference
-
-`chain_b_script_editor` if `applescript://` or `do shell script` found in strings.
-`chain_a_terminal` otherwise, if delivery primitives found.
-
-### Family attribution
-
-Checks for AMOS markers (`osalogging`, `receiveex.php`, `openex.php`) and
-Odyssey markers (`odyssey` string) to name the likely payload family.
+`common/signature_trust.py`'s "notarized ≠ safe" trust-revocation gate reads both signals
+directly, rather than a dedicated ClickFix score/confidence/delivery-chain output. There is
+no equivalent to the old `clickfix_suspected` boolean or Chain A/Chain B label — the
+underlying evidence (which category matched, or whether run-only AppleScript was found) is
+available to the agent's reasoning chain without a precomputed summary.
 
 ---
 
@@ -242,22 +240,21 @@ strong individual indicators (e.g. complete injection triad alone warrants MALIC
 ## Data Flow Diagram
 
 ```
-classify_bundle_native.py
+cli.py
   │
-  ├── extract(path)                          # extract_features_native.py
+  ├── backend.extract(path)                  # feature_extractor.py
   │     ├── analyze_preflight(path)          # xattr, mdls, file
   │     ├── analyze_bundle(path)             # plutil, find
   │     ├── analyze_signature(path)          # codesign, spctl, xcrun
   │     ├── analyze_binary(main_binary)      # otool, nm, lipo, strings
   │     │     ├── detect_packer_signatures() # bytes scan
   │     │     ├── _calculate_segment_entropy()# otool + python3
-  │     │     ├── _extract_suspicious_strings()# strings
+  │     │     ├── extract_strings_of_interest()# common/strings.py
   │     │     └── (nm symbols, lipo arches, otool sections...)
-  │     ├── detect_clickfix(features)        # clickfix_detector.py
   │     └── detect_obfuscation(features)     # obfuscation_detector.py
   │
-  └── run_agent(features)                    # classify_bundle_native.py
-        │                                    # OR agent_loop_local.py
+  └── run_react(features)                    # common/agent_modes.py
+        │                                    # OR agent_loop_local.py / agent_loop_foundation.py
         ├── [tool call] get_xattr()
         ├── [tool call] get_signature_info()
         ├── [tool call] get_symbols()

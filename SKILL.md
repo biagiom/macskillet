@@ -36,6 +36,9 @@ macskillet /path/to/App.app --ollama --model qwen2.5:14b
 # Feature extraction only (no AI, cacheable)
 macskillet /path/to/App.app --features-only --pretty
 
+# Deep scan: also analyze embedded AppleScripts/dylibs/helper binaries (default limit 10)
+macskillet /path/to/App.app --deep --pretty
+
 # Batch
 macskillet --batch /path/to/samples/ -o results.jsonl
 
@@ -46,7 +49,7 @@ bash quick_risk.sh /path/to/App.app
 Cross-platform (Linux/Windows, no macOS toolchain):
 ```bash
 uv sync --extra portable
-macskillet --backend portable -f /path/to/binary --pretty
+macskillet --backend portable /path/to/binary --pretty
 ```
 
 ## Output
@@ -59,15 +62,30 @@ macskillet --backend portable -f /path/to/binary --pretty
 | `recommendation` | `BLOCK` / `INVESTIGATE` / `ALLOW` |
 | `key_indicators` | Ordered list of top signals |
 | `reasoning_chain` | Step-by-step: observation → inference → risk_delta |
-| `clickfix_detection` | ClickFix result with delivery chain and matched indicators |
-| `obfuscation_detection` | Packing/entropy result |
+| `obfuscation_detection` | Packing/entropy/packer-signature/run-only-AppleScript result |
+| `deep_scan` | (with `--deep`) embedded AppleScript/dylib/helper-binary findings |
+
+There is no dedicated `clickfix_detection` field — ClickFix-style delivery indicators are
+covered by the general suspicious-string categories (`gatekeeper_bypass`, `automation`,
+`download_execute`, `malware_family_marker`, ...) and `obfuscation_detection`'s
+`runonly_applescript` check, not a separate precomputed score/chain-label.
 
 ## Key Capabilities
 
-- **ClickFix detection** — 40+ static indicators, Terminal (Chain A) and Script Editor (Chain B)
+- **ClickFix-style delivery detection** — via suspicious-string categories (quarantine
+  tampering, shell piping, `do shell script`/`applescript://` automation, AMOS/Odyssey
+  family markers) and run-only AppleScript detection, not a dedicated ClickFix module
 - **Process injection triad** — mach_vm_allocate + mach_vm_write + thread_create_running
 - **Signature & trust** — codesign status, notarization, Gatekeeper verdict, team ID
-- **Packing detection** — entropy analysis, UPX/MPRESS signatures, string density anomalies
+- **Packing detection** — entropy analysis, packer signatures (UPX/MPRESS/Nuitka/...), string
+  density anomalies; Nuitka-compiled Python binaries are treated as a suspicion boost, not a
+  legitimate-runtime suppression (unlike Go/Rust/Swift)
+- **Decoded base64 classification** — validated base64 strings are decoded and classified
+  (compiled Python bytecode, compressed payload, encoded script, or a recursive suspicious-
+  string match), not left as a flat generic finding
+- **Deep bundle scan** (`--deep`) — statically analyzes embedded AppleScripts, dylibs, and
+  helper binaries inside a bundle, catching e.g. a clean wrapper app shipping a
+  PyInstaller/Nuitka-compiled stealer as a helper binary
 - **ObjC class/method analysis** — often unstripped, reveals capability intent
 - **Quarantine xattr** — download origin URL, source application
 

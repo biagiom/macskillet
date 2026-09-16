@@ -81,6 +81,29 @@ python3 agent_loop_local.py --features features.json --model qwen2.5:14b
 
 ---
 
+## Deep Scan (`--deep` / `--deep-limit`)
+
+By default, only the bundle's main executable is statically analyzed. `--deep` extends
+extraction to embedded bundle-internal items too — a notarized wrapper app hiding malicious
+logic in an embedded AppleScript or helper binary would otherwise look clean.
+
+```bash
+# Also analyze embedded AppleScripts/dylibs/helper binaries (default limit: 10)
+macskillet /path/to/App.app --deep --pretty
+
+# Override the limit
+macskillet /path/to/App.app --deep-limit 25 --pretty
+```
+
+Priority order when there are more candidates than the limit: embedded AppleScript files
+first (common ClickFix Chain-B vector), then dylibs, then other Mach-O binaries (helper
+tools, XPC services, framework executables). Results land in `features["deep_scan"]`.
+Extraction-only — no extra API calls, no new agent tool; findings feed
+`signature_trust`'s trust-revocation gate and a summary line in the agent's precomputed
+signals, same as `obfuscation_detection` already does.
+
+---
+
 ## Batch Analysis
 
 ```bash
@@ -129,7 +152,7 @@ macskillet --list-backends
 uv run pytest tests/ -v
 
 # Run only native detector tests (no LIEF needed)
-uv run pytest tests/test_clickfix_detector.py tests/test_obfuscation_detector.py tests/test_agent_modes.py -v
+uv run pytest tests/test_obfuscation_detector.py tests/test_agent_modes.py -v
 
 # Run with timeout enforcement
 uv run pytest tests/ --timeout=30
@@ -146,7 +169,6 @@ uv run pytest tests/ --timeout=30
 | `risk_score` | 0–20+ (≥13 = malicious) |
 | `recommendation` | `BLOCK` / `INVESTIGATE` / `ALLOW` |
 | `mode` | `react` / `one_shot` / `hierarchical` / `react_thinking` |
-| `clickfix_detection` | ClickFix chain, score, matched indicators |
-| `obfuscation_detection` | Packing techniques, entropy, packer signatures |
+| `obfuscation_detection` | Packing techniques, entropy, packer signatures, run-only AppleScript |
 | `reasoning_chain` | Step-by-step: observation → inference → risk_delta |
 | `agent_tool_calls` | Full audit log of tool calls |

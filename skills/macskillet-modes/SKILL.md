@@ -9,10 +9,10 @@ description: Use when choosing the --mode flag for a macskillet run, comparing c
 
 | Mode | Flag | Tools | Relative cost | Best for |
 |------|------|-------|---------------|---------|
-| `react` | (default) | all 13 | medium | Unknown/novel samples |
+| `react` | (default) | all backend tools (native: 13, portable: 9) | medium | Unknown/novel samples |
 | `one_shot` | `--mode one_shot` | none | cheapest | Bulk triage, known-clean batches |
-| `hierarchical` | `--mode hierarchical` | 3 triage → all 13 | 3-5× cheaper on benign-heavy sets | Large dataset with high benign ratio |
-| `react_thinking` | `--mode react_thinking` | all 13 + thinking | most expensive | Obfuscated, high-stakes, ambiguous |
+| `hierarchical` | `--mode hierarchical` | 3 triage → all backend tools | 3-5× cheaper on benign-heavy sets | Large dataset with high benign ratio |
+| `react_thinking` | `--mode react_thinking` | all backend tools + thinking | most expensive | Obfuscated, high-stakes, ambiguous |
 
 ## Decision Guide
 
@@ -25,7 +25,7 @@ description: Use when choosing the --mode flag for a macskillet run, comparing c
 
 Stage 1: calls `get_xattr` + `get_signature_info` + `get_segment_entropy` (max 5 turns).
 - Returns BENIGN/HIGH → early exit, skips Stage 2. Saves ~70% cost on clean samples.
-- Any other result → Stage 2: full react loop with all 13 tools.
+- Any other result → Stage 2: full react loop with all backend tools.
 
 ## Output Fields
 

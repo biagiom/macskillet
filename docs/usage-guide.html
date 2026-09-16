@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>macOS App Classifier — Usage Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f12;
+    --surface: #141720;
+    --surface2: #1c2130;
+    --border: #252c3f;
+    --accent: #4af0a0;
+    --accent2: #f06060;
+    --accent3: #f0b840;
+    --accent4: #60a8f0;
+    --text: #c8d0e0;
+    --text-dim: #6a7590;
+    --text-bright: #e8eef8;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  /* ── Layout ─────────────────────────────────────────────── */
+  .layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    min-height: 100vh;
+  }
+
+  /* ── Sidebar ─────────────────────────────────────────────── */
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 32px 0 48px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar-logo {
+    padding: 0 24px 24px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+
+  .sidebar-logo .wordmark {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .sidebar-logo .title {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  .nav-section {
+    padding: 0 16px;
+    margin-bottom: 8px;
+  }
+
+  .nav-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 0 8px;
+    margin-bottom: 4px;
+  }
+
+  .nav-link {
+    display: block;
+    padding: 6px 8px;
+    font-size: 13px;
+    color: var(--text-dim);
+    text-decoration: none;
+    border-radius: 4px;
+    transition: all 0.15s;
+    border-left: 2px solid transparent;
+  }
+
+  .nav-link:hover {
+    color: var(--text-bright);
+    background: var(--surface2);
+    border-left-color: var(--accent);
+  }
+
+  .nav-link.active {
+    color: var(--accent);
+    background: rgba(74, 240, 160, 0.07);
+    border-left-color: var(--accent);
+  }
+
+  /* ── Main content ─────────────────────────────────────────── */
+  .main {
+    padding: 56px 64px 96px;
+    max-width: 880px;
+  }
+
+  /* ── Hero ─────────────────────────────────────────────────── */
+  .hero {
+    margin-bottom: 64px;
+    padding-bottom: 48px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid rgba(74,240,160,0.3);
+    padding: 3px 10px;
+    border-radius: 3px;
+    margin-bottom: 16px;
+    background: rgba(74,240,160,0.05);
+  }
+
+  h1 {
+    font-size: 36px;
+    font-weight: 300;
+    color: var(--text-bright);
+    line-height: 1.2;
+    margin-bottom: 16px;
+    letter-spacing: -0.02em;
+  }
+
+  h1 strong { font-weight: 600; color: var(--accent); }
+
+  .hero-desc {
+    font-size: 16px;
+    color: var(--text-dim);
+    max-width: 560px;
+    line-height: 1.8;
+  }
+
+  .hero-pills {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+
+  .pill {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+
+  .pill.green { border-color: rgba(74,240,160,0.3); color: var(--accent); }
+  .pill.red   { border-color: rgba(240,96,96,0.3);  color: var(--accent2); }
+  .pill.blue  { border-color: rgba(96,168,240,0.3); color: var(--accent4); }
+  .pill.amber { border-color: rgba(240,184,64,0.3); color: var(--accent3); }
+
+  /* ── Section headings ─────────────────────────────────────── */
+  .section {
+    margin-bottom: 56px;
+  }
+
+  h2 {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text-bright);
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  h2 .h2-num {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    background: rgba(74,240,160,0.1);
+    border: 1px solid rgba(74,240,160,0.25);
+    padding: 1px 7px;
+    border-radius: 3px;
+  }
+
+  h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-bright);
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 28px 0 12px;
+  }
+
+  p { margin-bottom: 14px; color: var(--text); }
+
+  /* ── Code blocks ──────────────────────────────────────────── */
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px 24px;
+    overflow-x: auto;
+    margin: 16px 0;
+    position: relative;
+  }
+
+  pre .lang-tag {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+  }
+
+  code {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text);
+  }
+
+  p code, li code {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 12.5px;
+    color: var(--accent4);
+  }
+
+  /* syntax coloring */
+  .c  { color: var(--text-dim); font-style: italic; }       /* comment */
+  .kw { color: var(--accent4); }                             /* keyword/flag */
+  .str{ color: var(--accent); }                              /* string */
+  .cmd{ color: #e08060; }                                    /* command name */
+  .num{ color: var(--accent3); }                             /* number */
+  .p  { color: var(--accent2); }                             /* path */
+  .ok { color: var(--accent); }                              /* success */
+  .err{ color: var(--accent2); }                             /* error/warn */
+
+  /* ── Callout boxes ────────────────────────────────────────── */
+  .callout {
+    border-left: 3px solid var(--accent);
+    background: rgba(74,240,160,0.04);
+    padding: 14px 18px;
+    border-radius: 0 6px 6px 0;
+    margin: 16px 0;
+  }
+
+  .callout.warn {
+    border-color: var(--accent3);
+    background: rgba(240,184,64,0.04);
+  }
+
+  .callout.danger {
+    border-color: var(--accent2);
+    background: rgba(240,96,96,0.04);
+  }
+
+  .callout-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+
+  .callout.warn .callout-title { color: var(--accent3); }
+  .callout.danger .callout-title { color: var(--accent2); }
+
+  /* ── Tables ───────────────────────────────────────────────── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 13px;
+  }
+
+  th {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 12px;
+    text-align: left;
+  }
+
+  td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(37,44,63,0.6);
+    vertical-align: top;
+  }
+
+  tr:last-child td { border-bottom: none; }
+
+  td code { font-size: 12px; }
+
+  /* ── Step flow ────────────────────────────────────────────── */
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 20px 0;
+  }
+
+  .step {
+    display: grid;
+    grid-template-columns: 48px 1fr;
+    gap: 16px;
+    position: relative;
+  }
+
+  .step:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    left: 23px;
+    top: 40px;
+    bottom: -8px;
+    width: 1px;
+    background: var(--border);
+  }
+
+  .step-num {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    flex-shrink: 0;
+    margin-top: 4px;
+    z-index: 1;
+  }
+
+  .step-body {
+    padding-bottom: 28px;
+  }
+
+  .step-title {
+    font-weight: 600;
+    color: var(--text-bright);
+    margin-bottom: 6px;
+  }
+
+  /* ── Mode cards ───────────────────────────────────────────── */
+  .mode-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 20px 0;
+  }
+
+  .mode-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    transition: border-color 0.2s;
+  }
+
+  .mode-card:hover { border-color: var(--accent); }
+
+  .mode-card .mode-icon {
+    font-size: 22px;
+    margin-bottom: 10px;
+  }
+
+  .mode-card h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-bright);
+    margin-bottom: 6px;
+  }
+
+  .mode-card p {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin: 0 0 12px;
+  }
+
+  /* ── Model table ──────────────────────────────────────────── */
+  .model-row td:first-child code { color: var(--accent3); }
+
+  /* ── Output anatomy ──────────────────────────────────────── */
+  .output-field {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: start;
+  }
+
+  .output-field:last-child { border-bottom: none; }
+
+  .field-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent4);
+  }
+
+  .field-desc { font-size: 13px; color: var(--text); }
+
+  /* ── Verdict badges ──────────────────────────────────────── */
+  .vbadge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 3px;
+    letter-spacing: 0.05em;
+  }
+
+  .vbadge.mal  { background: rgba(240,96,96,0.15);  color: var(--accent2); border: 1px solid rgba(240,96,96,0.3); }
+  .vbadge.sus  { background: rgba(240,184,64,0.12); color: var(--accent3); border: 1px solid rgba(240,184,64,0.3); }
+  .vbadge.ben  { background: rgba(74,240,160,0.1);  color: var(--accent);  border: 1px solid rgba(74,240,160,0.3); }
+
+  /* ── Architecture diagram ─────────────────────────────────── */
+  .arch {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    margin: 20px 0;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 2;
+    color: var(--text-dim);
+    overflow-x: auto;
+  }
+
+  .arch .box   { color: var(--text-bright); }
+  .arch .arrow { color: var(--border); }
+  .arch .tag   { color: var(--accent); }
+  .arch .note  { color: var(--text-dim); font-style: italic; }
+
+  /* ── Lists ────────────────────────────────────────────────── */
+  ul, ol { padding-left: 20px; margin: 10px 0 16px; }
+  li { margin-bottom: 6px; color: var(--text); }
+  li strong { color: var(--text-bright); }
+
+  /* ── Divider ──────────────────────────────────────────────── */
+  hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+
+  /* ── Scrollbar ────────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+<!-- ── Sidebar ─────────────────────────────────────────────── -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="wordmark">macOS Classifier</div>
+    <div class="title">Usage Guide</div>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Getting Started</div>
+    <a class="nav-link" href="#overview">Overview</a>
+    <a class="nav-link" href="#install">Installation</a>
+    <a class="nav-link" href="#quickstart">Quick Start</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Usage Modes</div>
+    <a class="nav-link" href="#single">Single Sample</a>
+    <a class="nav-link" href="#batch">Batch Analysis</a>
+    <a class="nav-link" href="#features-only">Features Only</a>
+    <a class="nav-link" href="#local-llm">Local LLM (Ollama)</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Detectors</div>
+    <a class="nav-link" href="#clickfix">ClickFix Detection</a>
+    <a class="nav-link" href="#obfuscation">Packing / Obfuscation</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Reference</div>
+    <a class="nav-link" href="#output">Output Format</a>
+    <a class="nav-link" href="#tools">Agent Tools</a>
+    <a class="nav-link" href="#triage">Quick Triage (Bash)</a>
+    <a class="nav-link" href="#faq">FAQ</a>
+  </div>
+</nav>
+
+<!-- ── Main ───────────────────────────────────────────────── -->
+<main class="main">
+
+  <!-- HERO -->
+  <section class="hero" id="overview">
+    <div class="badge">Skill Guide · v2.0</div>
+    <h1><strong>macOS App Classifier</strong><br>Native Edition</h1>
+    <p class="hero-desc">
+      Static analysis + agentic AI classification of macOS <code>.app</code> bundles
+      and Mach-O binaries. Uses only tools that ship with macOS — no brew, no pip,
+      no dependencies.
+    </p>
+    <div class="hero-pills">
+      <span class="pill green">Zero dependencies</span>
+      <span class="pill green">macOS 12+</span>
+      <span class="pill blue">Claude API</span>
+      <span class="pill amber">Ollama local LLM</span>
+      <span class="pill red">ClickFix detection</span>
+      <span class="pill red">Packing detection</span>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="section" id="how-it-works">
+    <h2><span class="h2-num">00</span> How It Works</h2>
+    <p>
+      The skill runs a 9-phase pipeline. Feature extraction uses native macOS CLI tools.
+      A Claude (or local Ollama) agent then iteratively calls those features as tools,
+      reasons over them, and produces an explainable verdict.
+    </p>
+
+    <div class="arch">
+<span class="box">Input</span>  .app bundle  or  Mach-O binary
+  │
+  ├─ <span class="tag">Phase 1</span>  Pre-flight         <span class="note">file · xattr · mdls (quarantine, download origin)</span>
+  ├─ <span class="tag">Phase 2</span>  Bundle Inventory   <span class="note">find · plutil (Info.plist, structure, persistence)</span>
+  ├─ <span class="tag">Phase 3</span>  Signature & Trust  <span class="note">codesign · spctl · xcrun stapler</span>
+  ├─ <span class="tag">Phase 4</span>  Binary Analysis    <span class="note">otool · nm · lipo · strings</span>
+  ├─ <span class="tag">Phase 5</span>  Risk Aggregation   <span class="note">score signals per risk-signals.md</span>
+  ├─ <span class="tag">Phase 6</span>  Agentic AI Loop    <span class="note">Claude / Ollama tool-use → reasoning chain</span>
+  ├─ <span class="tag">Phase 7</span>  Obfuscation Check  <span class="note">entropy · UPX sigs · string density · symbol anomalies · run-only AppleScript</span>
+  └─ <span class="tag">Output</span>  JSON report        <span class="note">verdict · confidence · risk_score · reasoning chain</span>
+    </div>
+  </section>
+
+  <!-- INSTALLATION -->
+  <section class="section" id="install">
+    <h2><span class="h2-num">01</span> Installation</h2>
+
+    <h3>1 — Install the package</h3>
+    <pre><code><span class="c"># macOS, native pipeline + Claude API — the normal case</span>
+pip install <span class="str">"macskillet[claude]"</span>
+
+<span class="c"># Non-macOS host, or bulk cross-platform pipelines</span>
+pip install <span class="str">"macskillet[claude,portable]"</span>
+
+<span class="c"># Local inference instead of the API</span>
+pip install <span class="str">"macskillet[ollama]"</span>
+
+<span class="c"># On-device Apple Foundation Models (macOS 26+ with Apple Intelligence, Xcode 26+)</span>
+pip install <span class="str">"macskillet[apple]"</span></code></pre>
+
+    <h3>2 — Set your API key (Claude mode)</h3>
+    <pre><code>export ANTHROPIC_API_KEY=<span class="str">"sk-ant-..."</span></code></pre>
+
+    <h3>3 — (Optional) Install Xcode CLI tools</h3>
+    <p>Needed for <code>otool</code>, <code>nm</code>, <code>lipo</code>, and <code>xcrun stapler</code>. Most analysts already have these.</p>
+    <pre><code>xcode-select --install</code></pre>
+
+    <div class="callout">
+      <div class="callout-title">✓ No further dependencies</div>
+      All other tools — <code>codesign</code>, <code>spctl</code>, <code>xattr</code>, <code>mdls</code>,
+      <code>plutil</code>, <code>strings</code>, <code>python3</code> — are pre-installed on every macOS system.
+      The native pipeline itself has zero Python dependencies; feature extraction
+      (<code>--features-only</code>) works on a bare <code>pip install macskillet</code>, no API key needed.
+    </div>
+  </section>
+
+  <!-- QUICK START -->
+  <section class="section" id="quickstart">
+    <h2><span class="h2-num">02</span> Quick Start</h2>
+    <p>Classify a suspicious app in one command:</p>
+
+    <pre><code><span class="c"># Analyze a .app bundle (Claude API)</span>
+macskillet <span class="p">/path/to/Suspicious.app</span> --pretty
+
+<span class="c"># Analyze a bare Mach-O binary</span>
+macskillet <span class="p">/tmp/helper</span> --pretty
+
+<span class="c"># Save report to file</span>
+macskillet <span class="p">/path/to/App.app</span> --pretty -o report.json</code></pre>
+
+    <p>Terminal output looks like this:</p>
+
+    <pre><code><span class="ok">══════════════════════════════════════════════════════════</span>
+<span class="kw">Sample:</span>  Suspicious.app
+<span class="kw">SHA256:</span>  b4f68a58658ceceb...
+<span class="kw">Backend:</span> claude
+<span class="err">Verdict: MALICIOUS</span> (HIGH confidence, score=17)
+<span class="kw">Action:</span>  BLOCK
+
+<span class="kw">Summary:</span>
+  Binary dropped to /tmp/helper with quarantine stripped. Complete
+  process injection triad detected. AMOS-family ClickFix indicators
+  present. Ad-hoc signed only.
+
+<span class="kw">⚠ Packing:</span> Packing detected (HIGH). Techniques: upx_packer,
+  high_entropy_segments, low_string_density. Score: 14.
+
+<span class="kw">Key indicators:</span>
+  • unsigned/ad-hoc — no identity verification
+  • complete injection triad: mach_vm_allocate+mach_vm_write+thread_create_running
+  • binary in /tmp/ with no quarantine xattr
+  • UPX packer signature detected
+  • /tmp/osalogging.zip exfil staging path in strings
+  • SecKeychainFindGenericPassword import
+<span class="ok">══════════════════════════════════════════════════════════</span></code></pre>
+  </section>
+
+  <!-- SINGLE SAMPLE -->
+  <section class="section" id="single">
+    <h2><span class="h2-num">03</span> Single Sample Analysis</h2>
+
+    <h3>App bundle</h3>
+    <pre><code>macskillet <span class="p">/Applications/SomeApp.app</span>
+macskillet <span class="p">~/Downloads/Installer.app</span> --pretty</code></pre>
+
+    <h3>Bare Mach-O binary</h3>
+    <pre><code><span class="c"># Common ClickFix drop paths</span>
+macskillet <span class="p">/tmp/helper</span>
+macskillet <span class="p">/tmp/update</span>
+macskillet <span class="p">/private/var/tmp/zad</span></code></pre>
+
+    <h3>dylib or framework binary</h3>
+    <pre><code>macskillet <span class="p">/path/to/suspicious.dylib</span></code></pre>
+
+    <div class="callout warn">
+      <div class="callout-title">⚠ Never run the sample</div>
+      Always analyze on an isolated macOS VM or analysis host. The classifier performs
+      static analysis only and does not execute the sample — but treat all samples as live until classified.
+    </div>
+  </section>
+
+  <!-- BATCH -->
+  <section class="section" id="batch">
+    <h2><span class="h2-num">04</span> Batch Analysis</h2>
+    <p>
+      Process an entire directory of samples and write results as JSONL (one report per line),
+      suitable for ingestion into your 40k-sample dataset pipeline.
+    </p>
+
+    <pre><code><span class="c"># Classify all Mach-O binaries and .app bundles in a directory</span>
+macskillet \
+  --batch <span class="p">/path/to/samples/</span> \
+  -o results.jsonl
+
+<span class="c"># With local LLM for faster/cheaper bulk processing</span>
+macskillet \
+  --batch <span class="p">/path/to/samples/</span> \
+  -o results.jsonl \
+  --ollama --model qwen2.5:14b</code></pre>
+
+    <p>Each line in <code>results.jsonl</code> is a complete JSON report. Parse with:</p>
+
+    <pre><code><span class="c"># Python: load all reports</span>
+<span class="kw">import</span> json
+
+reports = []
+<span class="kw">with</span> open(<span class="str">"results.jsonl"</span>) <span class="kw">as</span> f:
+    <span class="kw">for</span> line <span class="kw">in</span> f:
+        reports.append(json.loads(line))
+
+malicious = [r <span class="kw">for</span> r <span class="kw">in</span> reports <span class="kw">if</span> r.get(<span class="str">"verdict"</span>) == <span class="str">"MALICIOUS"</span>]
+print(f<span class="str">"{len(malicious)} / {len(reports)} classified as MALICIOUS"</span>)
+
+<span class="c"># Group by ClickFix-style behavioral suspicion (signature_trust override)</span>
+suspicious_signed = [r <span class="kw">for</span> r <span class="kw">in</span> reports
+            <span class="kw">if</span> r.get(<span class="str">"signature_trust"</span>, {}).get(<span class="str">"trust_level"</span>) == <span class="str">"suspicious_signed"</span>]
+print(f<span class="str">"Signed samples with revoked trust: {len(suspicious_signed)}"</span>)</code></pre>
+  </section>
+
+  <!-- FEATURES ONLY -->
+  <section class="section" id="features-only">
+    <h2><span class="h2-num">05</span> Feature Extraction Only</h2>
+    <p>
+      Extract the full static feature set without running the AI classifier. Useful for
+      building your own ML pipeline on top of the features, or inspecting raw data before
+      handing off to the agent.
+    </p>
+
+    <pre><code><span class="c"># Extract features, write JSON</span>
+macskillet <span class="p">/path/to/App.app</span> \
+  --features-only --pretty -o features.json
+
+<span class="c"># Or use the extractor directly</span>
+python3 feature_extractor.py -f <span class="p">/path/to/App.app</span> --pretty
+
+<span class="c"># Bulk extraction (fast — no API calls)</span>
+python3 feature_extractor.py \
+  --dir <span class="p">/path/to/samples/</span> \
+  -o features.jsonl</code></pre>
+
+    <p>Then classify separately from cached features:</p>
+    <pre><code><span class="c"># Run AI classification against pre-extracted features</span>
+python3 agent_loop_local.py --features features.json --model qwen2.5:14b</code></pre>
+
+    <div class="callout">
+      <div class="callout-title">Tip — decoupled pipeline</div>
+      For a 40k-sample dataset, extract all features first in one fast pass
+      (no API calls, no rate limits), then run the agent in a second pass.
+      Features are cached as JSON so you can re-classify with different models
+      without re-running extraction.
+    </div>
+  </section>
+
+  <!-- LOCAL LLM -->
+  <section class="section" id="local-llm">
+    <h2><span class="h2-num">06</span> Local LLM via Ollama</h2>
+    <p>
+      Replace the Claude API with a local model for air-gapped environments,
+      privacy-sensitive samples, or bulk processing without per-token costs.
+      The same 13 analysis tools work identically — only the inference backend changes.
+    </p>
+
+    <div class="mode-grid">
+      <div class="mode-card">
+        <div class="mode-icon">☁️</div>
+        <h4>Claude API (default)</h4>
+        <p>Best reasoning quality. Requires <code>ANTHROPIC_API_KEY</code>. Internet required.</p>
+        <pre style="margin:0"><code>macskillet \
+  App.app</code></pre>
+      </div>
+      <div class="mode-card">
+        <div class="mode-icon">🖥️</div>
+        <h4>Ollama (local)</h4>
+        <p>Offline, no API key, no data leaves the machine. Requires Ollama running.</p>
+        <pre style="margin:0"><code>macskillet \
+  App.app --ollama \
+  --model qwen2.5:14b</code></pre>
+      </div>
+    </div>
+
+    <h3>Setup</h3>
+    <pre><code><span class="c"># 1. Install Ollama</span>
+brew install ollama
+
+<span class="c"># 2. Start the server (keep this running)</span>
+ollama serve
+
+<span class="c"># 3. Pull a model</span>
+ollama pull qwen2.5:14b    <span class="c"># recommended</span>
+ollama pull llama3.1:8b    <span class="c"># faster, lower RAM</span>
+
+<span class="c"># 4. Install macskillet with the Ollama extra (only external dep)</span>
+pip install <span class="str">"macskillet[ollama]"</span>
+
+<span class="c"># 5. List what you have</span>
+python3 -m macskillet.native.agent_loop_local --list-models</code></pre>
+
+    <h3>Model Selection by Hardware</h3>
+    <table>
+      <thead>
+        <tr><th>Hardware</th><th>Model</th><th>Speed</th><th>Notes</th></tr>
+      </thead>
+      <tbody class="model-row">
+        <tr>
+          <td>M1/M2 MacBook (16 GB)</td>
+          <td><code>qwen2.5:7b</code></td>
+          <td>~45 tok/s</td>
+          <td>Fast, fits in unified memory</td>
+        </tr>
+        <tr>
+          <td>M2/M3 Pro (32 GB)</td>
+          <td><code>qwen2.5:14b</code></td>
+          <td>~20 tok/s</td>
+          <td>Best quality/speed balance ← recommended</td>
+        </tr>
+        <tr>
+          <td>M3 Max / M4 Pro (64 GB+)</td>
+          <td><code>llama3.1:70b</code></td>
+          <td>~8 tok/s</td>
+          <td>Near-Claude quality</td>
+        </tr>
+        <tr>
+          <td>Any (quick triage)</td>
+          <td><code>llama3.1:8b</code></td>
+          <td>~60 tok/s</td>
+          <td>1–2 min per sample</td>
+        </tr>
+        <tr>
+          <td>Any (deep reasoning)</td>
+          <td><code>deepseek-r1:8b</code></td>
+          <td>~20 tok/s</td>
+          <td>Slower but thorough chain-of-thought</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout warn">
+      <div class="callout-title">Quality note</div>
+      Smaller local models (7–8B) can miss subtle multi-step reasoning that Claude handles well.
+      For high-stakes classification use Claude. For bulk triage or air-gapped work,
+      <code>qwen2.5:14b</code> gives a good balance.
+    </div>
+  </section>
+
+  <!-- CLICKFIX -->
+  <section class="section" id="clickfix">
+    <h2><span class="h2-num">07</span> ClickFix Detection</h2>
+    <p>
+      ClickFix is the dominant macOS initial access vector in 2025–2026, up 517% year-over-year.
+      There is no dedicated ClickFix detector module — a first version existed but was retired
+      after investigation found most of its own indicator table was structurally unreachable
+      (fed from a separate, narrower pre-filter) and its packer-signature scan duplicated the
+      obfuscation detector's, which is a strict superset. ClickFix indicators are now covered by
+      two general-purpose mechanisms that check the <em>dropped payload binary</em> for static
+      indicators — not the delivery webpage.
+    </p>
+
+    <h3>Two Delivery Chains</h3>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">A</div>
+        <div class="step-body">
+          <div class="step-title">Terminal — Classic</div>
+          <p>Fake support/CAPTCHA page → user pastes <code>base64 -d | bash</code> →
+          curl downloads payload → drops to <code>/tmp/helper</code> →
+          <code>xattr -c</code> strips quarantine → <code>chmod +x</code> → executes</p>
+          <p><em>Partly mitigated by macOS 26.4 Terminal paste protection.</em></p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">B</div>
+        <div class="step-body">
+          <div class="step-title">Script Editor — Newer Evasion</div>
+          <p>Fake page → <code>applescript://</code> URL opens Script Editor pre-filled →
+          <code>do shell script</code> fires obfuscated <code>curl | zsh</code> →
+          base64+gzip payload → <code>/tmp/helper</code> → <code>xattr -c</code> → executes</p>
+          <p><em>Bypasses the 26.4 Terminal protection. Active as of April 2026.</em></p>
+        </div>
+      </div>
+    </div>
+
+    <h3>What Gets Checked, and Where</h3>
+    <table>
+      <thead><tr><th>Category</th><th>Examples</th><th>Risk</th><th>Source</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Quarantine tampering</td>
+          <td><code>xattr -c</code>, <code>com.apple.quarantine</code></td>
+          <td><span class="vbadge mal">HIGH</span></td>
+          <td><code>gatekeeper_bypass</code> (common/strings.py)</td>
+        </tr>
+        <tr>
+          <td>Shell piping</td>
+          <td><code>curl | bash</code>, <code>wget | sh</code></td>
+          <td><span class="vbadge mal">HIGH</span></td>
+          <td><code>download_execute</code></td>
+        </tr>
+        <tr>
+          <td>Data harvesting</td>
+          <td><code>key4.db</code>, <code>wallet.dat</code>, keychain paths</td>
+          <td><span class="vbadge mal">HIGH</span></td>
+          <td><code>browser_data</code>, <code>crypto_wallet</code>, <code>keychain_access</code></td>
+        </tr>
+        <tr>
+          <td>AMOS/Odyssey family markers</td>
+          <td><code>osalogging</code>, <code>receiveex.php</code>, <code>joinsystem</code></td>
+          <td><span class="vbadge mal">HIGH</span></td>
+          <td><code>malware_family_marker</code></td>
+        </tr>
+        <tr>
+          <td>TCC abuse, dev secrets, cloud-C2</td>
+          <td><code>tccutil reset</code>, <code>.npmrc</code>, <code>api.telegram.org</code></td>
+          <td>HIGH/MEDIUM</td>
+          <td><code>tcc_abuse</code>, <code>dev_secret_harvest</code>, <code>cloud_c2_exfil</code>, <code>cloud_hosting_abuse</code></td>
+        </tr>
+        <tr>
+          <td>Script Editor vector</td>
+          <td><code>do shell script</code>, <code>applescript://</code></td>
+          <td><span class="vbadge mal">HIGH</span></td>
+          <td><code>automation</code></td>
+        </tr>
+        <tr>
+          <td>Run-only AppleScript payload</td>
+          <td><code>0xFADEDEAD</code> marker (source-stripped applet)</td>
+          <td><span class="vbadge mal">HIGH</span></td>
+          <td><code>applescript_analysis.runonly_applescript</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Reading the Result</h3>
+    <p>There's no <code>clickfix_detection</code> field, score, confidence, or delivery-chain
+    label anymore. The classify report's <code>reasoning_chain</code>/<code>key_indicators</code>
+    already narrate this evidence in English; to inspect the raw signals directly, run with
+    <code>--features-only</code> — these fields are all top-level in that output, not nested
+    under each other:</p>
+    <pre><code><span class="c"># macskillet App.app --features-only --pretty</span>
+{
+  <span class="str">"strings_of_interest"</span>: [
+    {<span class="str">"value"</span>: <span class="str">"xattr -c"</span>, <span class="str">"category"</span>: <span class="str">"gatekeeper_bypass"</span>, <span class="str">"risk"</span>: <span class="str">"HIGH"</span>}
+  ],
+  <span class="str">"applescript_analysis"</span>: {
+    <span class="str">"runonly_applescript"</span>: <span class="kw">true</span>
+  },
+  <span class="str">"signature_trust"</span>: {
+    <span class="str">"trust_level"</span>: <span class="str">"suspicious_signed"</span>,
+    <span class="str">"summary"</span>: <span class="str">"developer_id sample exhibits run-only AppleScript or suspicious-string evidence — signing trust credit revoked..."</span>
+  }
+}</code></pre>
+
+    <div class="callout">
+      <div class="callout-title">Key signal</div>
+      A signed/notarized sample that also matches a <code>gatekeeper_bypass</code>,
+      <code>automation</code>, <code>download_execute</code>, <code>cloud_c2_exfil</code>, or
+      <code>malware_family_marker</code> string category — or ships a run-only AppleScript
+      payload — has its trust credit revoked entirely by <code>signature_trust</code> and is
+      relabeled <code>suspicious_signed</code>. This is the "notarized ≠ safe" override.
+    </div>
+  </section>
+
+  <!-- OBFUSCATION -->
+  <section class="section" id="obfuscation">
+    <h2><span class="h2-num">08</span> Packing &amp; Obfuscation Detection</h2>
+    <p>
+      Packed binaries defeat static analysis. The detector runs seven complementary
+      checks because no single method is reliable alone.
+    </p>
+
+    <table>
+      <thead><tr><th>Method</th><th>Tool</th><th>What it flags</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Packer signatures</td>
+          <td>python3 (bytes)</td>
+          <td><code>UPX!</code>, <code>MPRESS1</code>, <code>VMProtect</code> magic bytes</td>
+        </tr>
+        <tr>
+          <td>Segment entropy</td>
+          <td>otool + python3</td>
+          <td><code>__TEXT</code> entropy &gt;7.5 = packed; &gt;7.0 = suspicious</td>
+        </tr>
+        <tr>
+          <td>String density</td>
+          <td>strings + python3</td>
+          <td>&lt;5 strings/KB in a large binary = packed</td>
+        </tr>
+        <tr>
+          <td>Symbol anomaly</td>
+          <td>nm</td>
+          <td>Zero symbols in large binary = stripped/packed</td>
+        </tr>
+        <tr>
+          <td>Junk code</td>
+          <td>nm</td>
+          <td>&gt;5000 symbols = OSX.Zuru / Cobalt Strike padding</td>
+        </tr>
+        <tr>
+          <td>Section names</td>
+          <td>otool -l</td>
+          <td><code>UPX0</code>, <code>MPRESS1/2</code> section names</td>
+        </tr>
+        <tr>
+          <td>Encryption flag</td>
+          <td>otool -l</td>
+          <td><code>LC_ENCRYPTION_INFO</code> with <code>cryptid=1</code></td>
+        </tr>
+        <tr>
+          <td>Runtime detection</td>
+          <td>strings</td>
+          <td>Go / Rust / Nim / PyInstaller / Nuitka (adjusts entropy/junk-code scores)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout warn">
+      <div class="callout-title">Go / Rust false positive mitigation</div>
+      Go and Rust binaries are legitimately high-entropy and have low string density due to
+      statically linked runtimes. The detector identifies the runtime and lowers the
+      suspicion score accordingly, avoiding false positives on legitimate dev tools.
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">Nuitka is treated as a suspicion boost, not a suppression</div>
+      Nuitka-compiled Python binaries (a real, current macOS malware pattern — e.g. Infiniti
+      Stealer, Mar 2026) are detected via a byte-exact onefile-archive marker and the
+      <code>__compiled__</code> module attribute string. Unlike Go/Rust/Swift, Nuitka isn't yet a
+      common legitimate macOS distribution target, so detecting it does <em>not</em> suppress the
+      junk-code (symbol-count) heuristic — it adds to suspicion instead, the same way Nim does.
+      Packer-signature detection (including Nuitka/PyInstaller) now also runs on the portable
+      pipeline's main binary and on every Mach-O item <code>--deep</code> analyzes (embedded
+      dylibs/helper binaries), not just the native pipeline's top-level binary.
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">Run-only AppleScript detection runs on portable too</div>
+      Run-only/compiled AppleScript detection (the <code>0xFADEDEAD</code>/<code>FasdUAS</code>
+      markers) against the main binary and its bundle's AppleScript files runs on both
+      pipelines via the shared <code>common/deep_scan.py</code> check, exposed at the same
+      top-level <code>features["applescript_analysis"]</code> field on both.
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">Entropy/symbol/section obfuscation detection runs on portable too</div>
+      Entropy-ratio packing detection, symbol-table anomaly detection, section-name anomaly
+      detection, string-density scoring, Go/Rust/Swift/Nim/Nuitka runtime-marker detection, and
+      <code>LC_ENCRYPTION_INFO</code> detection all run on the portable pipeline now, populating
+      <code>features["obfuscation"]</code> there for the first time. Native gathers the raw data
+      via <code>otool</code>/<code>nm</code>/<code>strings</code>; portable gathers the same raw
+      data via LIEF and <code>common/strings.py::read_strings()</code>. Both feed the exact same
+      scoring formulas and thresholds in <code>common/obfuscation_signals.py</code>, so a
+      threshold can never drift between pipelines.
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">Base64 strings are decoded, not just shape-matched</div>
+      A validated base64 string is decoded and classified further when a stronger sub-signal is
+      present: <code>encoded_python_bytecode</code> (HIGH — structural <code>.pyc</code>
+      magic-number shape), <code>encoded_compressed_payload</code> (MEDIUM — gzip/zip/zstd magic
+      bytes, a nested "Matryoshka" encoding layer), or <code>encoded_script</code> (MEDIUM —
+      shebang line). A base64 string matching none of these still reports the generic
+      <code>possible_base64</code>/LOW finding, unchanged.
+    </div>
+
+    <h3>Reading the Result</h3>
+    <pre><code>{
+  <span class="str">"obfuscation_detection"</span>: {
+    <span class="str">"packing_suspected"</span>: <span class="kw">true</span>,
+    <span class="str">"confidence"</span>: <span class="str">"HIGH"</span>,
+    <span class="str">"techniques_detected"</span>: [<span class="str">"packer:UPX"</span>, <span class="str">"high_entropy_segments"</span>, <span class="str">"low_string_density"</span>],
+    <span class="str">"packer_signatures"</span>: [{ <span class="str">"packer"</span>: <span class="str">"UPX"</span>, <span class="str">"risk"</span>: <span class="str">"HIGH"</span> }],
+    <span class="str">"runtime"</span>: { <span class="str">"detected_runtime"</span>: <span class="kw">null</span> },
+    <span class="str">"score"</span>: <span class="num">16</span>,
+    <span class="str">"summary"</span>: <span class="str">"Packing detected (HIGH). Techniques: packer:UPX, high_entropy..."</span>
+  }
+}</code></pre>
+  </section>
+
+  <!-- OUTPUT FORMAT -->
+  <section class="section" id="output">
+    <h2><span class="h2-num">09</span> Output Format</h2>
+    <p>Every report is a JSON object. Top-level fields:</p>
+
+    <div class="output-field">
+      <div class="field-name">verdict</div>
+      <div class="field-desc">
+        <span class="vbadge mal">MALICIOUS</span>&nbsp;
+        <span class="vbadge sus">SUSPICIOUS</span>&nbsp;
+        <span class="vbadge ben">BENIGN</span>
+      </div>
+    </div>
+    <div class="output-field">
+      <div class="field-name">confidence</div>
+      <div class="field-desc"><code>HIGH</code> / <code>MEDIUM</code> / <code>LOW</code> — how certain the agent is</div>
+    </div>
+    <div class="output-field">
+      <div class="field-name">risk_score</div>
+      <div class="field-desc">Integer 0–20+. &lt;3 = benign, 6–8 = suspicious, 13+ = malicious</div>
+    </div>
+    <div class="output-field">
+      <div class="field-name">recommendation</div>
+      <div class="field-desc"><code>BLOCK</code> / <code>INVESTIGATE</code> / <code>ALLOW</code></div>
+    </div>
+    <div class="output-field">
+      <div class="field-name">summary</div>
+      <div class="field-desc">2–4 sentence human-readable explanation of the verdict</div>
+    </div>
+    <div class="output-field">
+      <div class="field-name">key_indicators</div>
+      <div class="field-desc">Ordered list of top signals that drove the verdict</div>
+    </div>
+    <div class="output-field">
+      <div class="field-name">reasoning_chain</div>
+      <div class="field-desc">Step-by-step analysis: observation → inference → risk_delta per step</div>
+    </div>
+    <div class="output-field">
+      <div class="field-name">obfuscation_detection</div>
+      <div class="field-desc">Packing/obfuscation result: techniques detected, entropy analysis, packer signatures, run-only AppleScript</div>
+    </div>
+    <div class="output-field">
+      <div class="field-name">deep_scan</div>
+      <div class="field-desc">Only present with <code>--deep</code>/<code>--deep-limit</code>: static analysis of up to N embedded bundle items beyond the main executable (AppleScript files first, then dylibs, then other Mach-O binaries). <code>enabled</code>, <code>limit</code>, <code>scanned</code> (each entry: <code>path</code>, <code>kind</code>, <code>analysis</code>), <code>skipped_count</code>, <code>skipped_by_kind</code>, <code>summary</code>. Feeds <code>signature_trust</code>'s trust-revocation gate the same way the main binary's own findings do.</div>
+    </div>
+    <div class="output-field">
+      <div class="field-name">agent_tool_calls</div>
+      <div class="field-desc">Full log of every tool the agent called, with inputs and outputs (audit trail)</div>
+    </div>
+    <div class="output-field">
+      <div class="field-name">inference_backend</div>
+      <div class="field-desc"><code>claude</code> or <code>ollama/model-name</code></div>
+    </div>
+  </section>
+
+  <!-- AGENT TOOLS -->
+  <section class="section" id="tools">
+    <h2><span class="h2-num">10</span> Agent Tools Reference</h2>
+    <p>
+      These are the native backend's 13 tools, available to the AI agent during its analysis
+      loop. You can also call them directly from Python via
+      <code>from macskillet.native.tools import dispatch_tool</code> (or
+      <code>macskillet.portable.tools</code> for the portable backend's smaller, 9-tool set —
+      see <code>docs/architecture.md</code>).
+    </p>
+
+    <table>
+      <thead><tr><th>Tool</th><th>Backed by</th><th>What it returns</th></tr></thead>
+      <tbody>
+        <tr><td><code>get_xattr</code></td><td><code>xattr</code></td><td>Quarantine flag, download origin URLs, provenance</td></tr>
+        <tr><td><code>get_signature_info</code></td><td><code>codesign + spctl</code></td><td>Signing status, team ID, authority chain, Gatekeeper verdict, notarization</td></tr>
+        <tr><td><code>get_entitlements</code></td><td><code>codesign</code></td><td>All entitlements with risk assessment per key</td></tr>
+        <tr><td><code>get_bundle_info</code></td><td><code>plutil + find</code></td><td>Info.plist fields, persistence dirs, embedded scripts, hidden files</td></tr>
+        <tr><td><code>get_dylibs</code></td><td><code>otool -L</code></td><td>Dylib paths with risk assessment (suspicious paths flagged)</td></tr>
+        <tr><td><code>get_load_commands</code></td><td><code>otool -l</code></td><td>Full load command list, encryption flag, dyld info type</td></tr>
+        <tr><td><code>get_symbols</code></td><td><code>nm</code></td><td>Imports/exports, high-risk symbols, dlopen/dlsym/shell-exec flags</td></tr>
+        <tr><td><code>check_injection_triad</code></td><td><code>nm</code></td><td>mach_vm_allocate + mach_vm_write + thread_create_running presence</td></tr>
+        <tr><td><code>get_objc_info</code></td><td><code>otool -ov</code></td><td>ObjC class names, method names, suspicious names flagged</td></tr>
+        <tr><td><code>get_segment_entropy</code></td><td><code>otool + python3</code></td><td>Per-segment entropy with high-entropy flags</td></tr>
+        <tr><td><code>get_strings</code></td><td><code>strings</code></td><td>Suspicious string matches by regex pattern</td></tr>
+        <tr><td><code>get_lipo_info</code></td><td><code>lipo</code></td><td>Architectures in FAT/Universal binary</td></tr>
+        <tr><td><code>lookup_api_risk</code></td><td>inline DB</td><td>Risk level + explanation for a given API symbol</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- QUICK TRIAGE -->
+  <section class="section" id="triage">
+    <h2><span class="h2-num">11</span> Quick Triage (Bash Only)</h2>
+    <p>
+      For incident response when you can't run Python or need a fast human-readable
+      summary, use <code>quick_risk.sh</code>. No Python required, no API calls — 
+      just bash and native macOS tools.
+    </p>
+
+    <pre><code><span class="c"># Run triage script</span>
+bash quick_risk.sh <span class="p">/path/to/Suspicious.app</span>
+
+<span class="c"># Or specify binary explicitly</span>
+bash quick_risk.sh <span class="p">/path/to/App.app</span> <span class="p">/path/to/App.app/Contents/MacOS/AppBinary</span></code></pre>
+
+    <p>The script checks (in order): file type, extended attributes, code signature,
+    Gatekeeper, notarization, entitlements, architectures, dylibs, high-risk symbols,
+    injection triad, suspicious ObjC classes, suspicious strings, and bundle anomalies.</p>
+
+    <div class="callout">
+      <div class="callout-title">5-second one-liner</div>
+      <pre style="margin:0"><code>T=<span class="str">"/path/to/App.app"</span>; B=<span class="str">"$T/Contents/MacOS/$(plutil -extract CFBundleExecutable raw $T/Contents/Info.plist)"</span>
+echo <span class="str">"--- Sig ---"</span> && codesign --verify -v <span class="str">"$T"</span> 2>&1 | tail -2
+echo <span class="str">"--- Gate ---"</span> && spctl --assess -v <span class="str">"$T"</span> 2>&1
+echo <span class="str">"--- Risky ---"</span> && nm -u <span class="str">"$B"</span> 2>/dev/null | grep -E <span class="str">"mach_vm|task_for_pid|dlopen|system$|SecKeychain"</span></code></pre>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section" id="faq">
+    <h2><span class="h2-num">12</span> FAQ</h2>
+
+    <h3>Does this work on Linux or Windows?</h3>
+    <p>
+      The native backend doesn't — it wraps <code>codesign</code>, <code>spctl</code>,
+      <code>xattr</code>, and other Apple-specific tools, so it requires macOS. For
+      cross-platform analysis, pass <code>--backend portable</code>: the same
+      <code>macskillet</code> CLI switches to the LIEF/machopy-based backend, which
+      works on any OS. See <a href="#tools">Agent Tools Reference</a> and
+      <code>docs/architecture.md</code> for what differs between the two.
+    </p>
+
+    <h3>Can I analyze App Store apps?</h3>
+    <p>
+      Yes, but <code>LC_ENCRYPTION_INFO</code> with <code>cryptid=1</code> means the binary
+      is DRM-encrypted. Static analysis of the encrypted binary is limited — you'll still
+      get signature, entitlements, dylib list, and metadata, but symbol and string analysis
+      will be severely limited until the binary is decrypted.
+    </p>
+
+    <h3>Why does a Go/Rust binary score as suspicious?</h3>
+    <p>
+      Go and Rust embed their entire runtime statically, which produces high entropy and low
+      string density — the same signals as a packed binary. The detector identifies the
+      language runtime (via <code>Go build ID:</code> or <code>__rustc</code> strings) and
+      automatically reduces the suspicion score to avoid false positives.
+    </p>
+
+    <h3>The agent used only 4 tool calls — is that enough?</h3>
+    <p>
+      It depends. For a clearly benign or clearly malicious sample, the agent will often
+      reach a high-confidence verdict after 4–6 calls. For ambiguous samples it may use
+      10–12. The agent stops when it has sufficient evidence — unnecessary tool calls are
+      avoided to keep latency down.
+    </p>
+
+    <h3>How do I add my own ClickFix-style indicators?</h3>
+    <p>
+      There's no dedicated ClickFix detector — add a <code>StringPattern</code> entry to
+      <code>SUSPICIOUS_PATTERNS</code> in <code>common/strings.py</code>, the single
+      source of truth for suspicious-string detection shared by both the native and
+      portable pipelines. Each entry has a category, regex pattern, risk level, and
+      description. If the new category should also revoke trust for signed samples (like
+      <code>gatekeeper_bypass</code> or <code>automation</code> do today), add it to
+      <code>_SUSPICIOUS_CATEGORIES</code> in <code>common/signature_trust.py</code> too.
+    </p>
+
+    <h3>Should I use the native or portable backend?</h3>
+    <p>
+      They're two backends of the same tool, not separate skills — <code>backends.py</code>
+      picks native on macOS and portable elsewhere, or force either with <code>--backend</code>.
+      Use native for live incident-response triage on macOS (it has extra signals: quarantine
+      xattr, Gatekeeper verdict, notarization staple, ObjC class/method names). Use portable
+      for bulk cross-platform pipeline work. You can extract features with both and merge the
+      JSON outputs if you want both signal sets for the same sample.
+    </p>
+  </section>
+
+</main>
+</div>
+
+<script>
+  // Highlight active nav link on scroll
+  const sections = document.querySelectorAll('section[id]');
+  const navLinks = document.querySelectorAll('.nav-link');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navLinks.forEach(link => link.classList.remove('active'));
+        const active = document.querySelector(`.nav-link[href="#${entry.target.id}"]`);
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+
+  sections.forEach(s => observer.observe(s));
+</script>
+
+</body>
+</html>

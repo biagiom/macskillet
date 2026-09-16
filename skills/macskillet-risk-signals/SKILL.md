@@ -67,10 +67,21 @@ description: Use when computing a macskillet risk score, interpreting signal wei
 | Load from ~/home (unusual) | +3 |
 | Dylib name: inject/hook/patch/swizzle | +3 |
 
+### Packer / Language-Runtime Signatures
+| Signal | Score |
+|--------|-------|
+| Any HIGH-risk packer signature match (UPX, Nuitka onefile marker, ...) | +8 per match |
+| Detected runtime is Nim or Nuitka | +2 (NOT suppressed like Go/Rust/Swift — both are rare in legitimate macOS distribution and disproportionately seen in malware, e.g. Nuitka: Infiniti Stealer) |
+
 ### Strings
 | Pattern | Score |
 |---------|-------|
 | `base64 -d \| bash` or `curl \| zsh` | +4 |
+| Base64 blob, no stronger sub-signal (`possible_base64`) | +2 |
+| Base64 decodes to CPython bytecode shape (`encoded_python_bytecode`) | +5 |
+| Base64 decodes to gzip/zip/zstd magic (`encoded_compressed_payload`) | +3 |
+| Base64 decodes to a shebang (`encoded_script`) | +3 |
+| Base64 decodes to text matching another suspicious-string category | inherits that category's score (recursive scan, one level deep — e.g. base64-encoded `curl \| bash` scores as `download_execute`, not generic `possible_base64`) |
 | /tmp/ + executable path | +3 |
 | Keychain strings + network strings together | +3 |
 | Anti-VM strings (VMware, VirtualBox, sandbox) | +3 |
@@ -100,7 +111,10 @@ description: Use when computing a macskillet risk score, interpreting signal wei
 ## Correlation Rules
 
 - Multiple MEDIUM signals outweigh a single HIGH signal
-- `clickfix_detection.clickfix_suspected = true` + no quarantine → escalate to MALICIOUS if score ≥ 9
+- ClickFix-style delivery indicators (`gatekeeper_bypass`/`download_execute`/`automation`
+  string categories, or `runonly_applescript`) + no quarantine → escalate to MALICIOUS if
+  score ≥ 9. There is no dedicated `clickfix_detection.clickfix_suspected` field — this is a
+  general suspicious-string/obfuscation signal, not a precomputed ClickFix verdict.
 - `obfuscation_detection.packing_suspected = true` + no signature → add +3 to score
 - `signature_trust.override_applied = true` → drop the signing trust credit; apply `signature_trust.adjustment` (+3) instead
 - **Non-persistent ≠ benign:** most 2025–2026 macOS infostealers are smash-and-grab with no persistence. Weight delivery (ClickFix/`applescript://`) + exfil-target signals as heavily as persistence — absence of a LaunchAgent is not exculpatory.

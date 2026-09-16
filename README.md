@@ -109,17 +109,21 @@ macskillet /path/to/App.app --apple --pretty
 
 ## Detectors that run before the agent
 
-Two detectors run automatically during extraction, so their results are already in the
+Detectors run automatically during extraction, so their results are already in the
 agent's context on turn one instead of being something it has to go find:
 
-- **ClickFix** (`clickfix_detector.py`) — ClickFix is the dominant macOS initial-access
-  vector as of 2025–2026. 40+ indicators cover both delivery chains:
+- **ClickFix** (no dedicated module) — ClickFix is the dominant macOS initial-access
+  vector as of 2025–2026, covering both delivery chains:
   - **Chain A — Terminal:** `fake page → base64 -d | bash → curl download → /tmp/helper → xattr -c → exec`
   - **Chain B — Script Editor** (evades Terminal-focused protections): `fake page → applescript:// URL → Script Editor → do shell script → curl|zsh → /tmp/helper → exec`
 
   Detection targets the *dropped Mach-O binary itself* — drop paths, delivery primitives,
   C2 endpoints, data-harvesting targets, AMOS persistence markers, anti-analysis strings,
-  packer signatures — not the delivery webpage.
+  packer signatures — not the delivery webpage. This is covered by two general mechanisms
+  rather than a standalone detector: `common/strings.py`'s suspicious-string categories
+  (`gatekeeper_bypass`, `download_execute`, `automation`, `malware_family_marker`, ...)
+  and `obfuscation_detector.py`'s run-only-AppleScript check. See `docs/architecture.md`
+  for why the earlier dedicated `clickfix_detector.py` was retired.
 - **Obfuscation** (`obfuscation_detector.py`) — 7 methods: entropy analysis, UPX/packer
   signatures, string density, symbol anomalies, junk code detection, with a Swift
   false-positive guard.

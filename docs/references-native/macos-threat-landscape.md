@@ -96,16 +96,19 @@ KANDYKORN, FlexibleFerret, RustDoor, GIMMICK, HZ RAT, LightSpy, ChillyHell.
 
 | Landscape item | MacSkillet coverage |
 |---|---|
-| ClickFix Terminal + Script Editor | `clickfix_detector` (Chain A/B, `applescript://`, decode chains) |
+| ClickFix Terminal + Script Editor | `common/strings.py` suspicious-string categories (`gatekeeper_bypass`, `automation`, `download_execute`) + `obfuscation_detector.scan_runonly_applescript` for the Script Editor variant |
 | Notarization abuse ("notarized ≠ safe") | `signature_trust.assess_signature_trust` override → `get_signature_info.trust_assessment` |
 | Run-only AppleScript | `obfuscation_detector.scan_runonly_applescript` (`0xFADEDEAD`) |
 | Quarantine removal / provenance | `get_xattr` (`download_origin_urls`, `quarantine_bypassed`) |
-| Shell-config persistence, TCC, dev-secrets, cloud-C2, masquerade | `clickfix_detector` string indicators |
+| Shell-config persistence, TCC, dev-secrets, cloud-C2, masquerade | `common/strings.py` string categories (`shell_config_persistence`, `tcc_abuse`, `dev_secret_harvest`, `cloud_c2_exfil`, `cloud_hosting_abuse`, `malware_family_marker`) |
 | Packing / entropy / language runtime | `obfuscation_detector` |
 | Injection triad, entitlements, dylibs, symbols | agent tools (`check_injection_triad`, `get_entitlements`, `get_dylibs`, `get_symbols`) |
 
 **Notarization-revocation** (online OCSP) and a dedicated shell-config tool were
 considered but not added: trust revocation is surfaced by `signature_trust`, and
-shell-config references are already flagged by `clickfix_detector`. See the
+shell-config references are already flagged by the `shell_config_persistence` suspicious-string
+category. There is no dedicated `clickfix_detector` module — a first version existed but was
+retired after investigation found most of its own indicator table was structurally
+unreachable and its packer-signature scan duplicated `obfuscation_detector.py`'s. See the
 session lit-search note (`projects/biagiom/macos-ai-skill/notes/active/`) for full
 provenance and source caveats.

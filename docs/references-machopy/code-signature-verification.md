@@ -29,6 +29,36 @@ against whatever key the binary's own signature blob happens to provide. A same-
 forgery fails here regardless of what it claims, because its self-signature verifies
 under the attacker's key, not Apple's.
 
+## A fifth, optional link: the RFC 3161 timestamp token
+
+Links 1–4 establish that a real private key signed this exact binary — but the expiry check
+(below) trusts the CMS `signing_time` attribute, which is self-declared by the signer, using
+the *same* key as everything else. A signer who still holds the private key for a certificate
+that has since expired or been revoked can forge `signing_time` to a date inside the
+certificate's original validity window while actually signing today, and links 1–4 would still
+all pass.
+
+When `codesign --timestamp` was used to sign, the CMS carries a `signature_time_stamp_token`
+unsigned attribute — an RFC 3161 timestamp token, itself a nested CMS `SignedData` wrapping a
+`TSTInfo`. This module independently verifies it:
+1. `TSTInfo.messageImprint` must match a hash of the *outer CMS signature bytes themselves* —
+   confirmed empirically against a real `--timestamp`-signed binary. This is what makes the
+   token unforgeable-by-substitution: forging `signing_time` changes `signed_attrs`, which
+   forces a brand-new signature value, invalidating any previously-issued token's imprint match.
+2. the token's own CMS signature is verified under its signer certificate;
+3. the token's certificate chain must resolve to a pinned root — empirically, Apple's timestamp
+   authority chain (`Timestamp Signer RNO1` → `Apple Timestamp Certification Authority`) already
+   terminates at the same pinned `Apple Root CA` used for links 1–4, so no additional certificate
+   needed sourcing or pinning.
+
+A **present** token that fails any of these three checks is tamper evidence (folded into the
+same `tamper_detected`/`"invalid"` outcome as a broken link 1–4). A token's **absence** is not
+evidence of anything — many legitimate signatures (ad-hoc, older tooling, `codesign` without
+`--timestamp`) never carry one, and the expiry check falls back to the self-declared
+`signing_time` exactly as before. This is an inherent limit, not an oversight: nothing but a
+trusted third-party countersignature can catch a forged `signing_time`, so unstamped signatures
+remain as exposed to this specific lie as they were before this link existed.
+
 ## `verification` levels
 
 Every signature result (`features["signature"]["verification"]`) carries one of three values:
@@ -39,8 +69,13 @@ Every signature result (`features["signature"]["verification"]`) carries one of 
   CMS signature that doesn't verify, or a chain that doesn't reach a pinned root. This is
   *evidence of tampering*, not absence of information — `signature_trust.py` weights it
   worse than an unsigned binary, since something tried to look trustworthy and got caught.
-- **`structural`** — no verification was possible (missing dependency, no signature
-  present). Trust logic must not treat this as equivalent to `cryptographic`.
+- **`unverified`** — no cryptographic determination was reached. Several independent causes
+  fall under this one value, all treated identically by trust logic: no signature present at
+  all; a signature present with nothing cryptographic to check (ad-hoc, no CMS blob); a
+  missing dependency (`asn1crypto` not installed, or off the LIEF path entirely); or no pinned
+  root certificates available to anchor the chain. None of these is evidence of tampering —
+  trust logic must not treat `unverified` as equivalent to `cryptographic`, but must also not
+  treat it as equivalent to `invalid`.
 
 ## What is deliberately not verified
 
@@ -51,11 +86,12 @@ where that matters most.
 
 ## Expiry and revocation
 
-Certificate expiry is checked against the CMS `signing_time` attribute, never against
-wall-clock "now" — a code-signing certificate legitimately expires years after a binary
-was signed, and checking against the current time would flag every untouched old app as
-expired. When `signing_time` isn't available, the expiry check is skipped (`expired: None`)
-rather than guessed.
+Certificate expiry is checked against a signing-time reference, never against wall-clock
+"now" — a code-signing certificate legitimately expires years after a binary was signed, and
+checking against the current time would flag every untouched old app as expired. That
+reference is, in priority order: a verified RFC 3161 timestamp token's `genTime` (see above),
+when present and valid; otherwise the self-declared CMS `signing_time`. When neither is
+available, the expiry check is skipped (`expired: None`) rather than guessed.
 
 Revocation (OCSP) requires network access, which this module never initiates unless
 explicitly asked: pass `check_revocation=True` to `verify_code_signature()`. This is the

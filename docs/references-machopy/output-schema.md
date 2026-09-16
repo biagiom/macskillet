@@ -51,6 +51,7 @@
     "signature": {
       "signed": "boolean",
       "signing_status": "apple_signed | developer_id | ad_hoc | unsigned | invalid",
+      "verification": "cryptographic | invalid | unverified — see docs/references-machopy/code-signature-verification.md",
       "notarized": "boolean",
       "team_id": "string | null",
       "bundle_id_match": "boolean",

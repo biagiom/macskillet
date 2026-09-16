@@ -64,6 +64,17 @@ High entropy in code segments can indicate packing or obfuscation.
 | `__LINKEDIT` | 5.0 – 7.5 | > 7.8 | +2 |
 | Any segment | any | = 8.0 (max) | +4 |
 
+### 4a. Packer / Language-Runtime Signals
+
+Byte-level packer signatures (`common/packer_signatures.py`) are checked against the whole
+file, independent of entropy. Detection also feeds `detect_language_runtime()`.
+
+| Signal | Score | Notes |
+|--------|-------|-------|
+| Any HIGH-risk packer signature match (UPX, Nuitka onefile marker, ...) | +8 per match | Byte-exact signature, not a heuristic |
+| Detected runtime is Nim or Nuitka | +2 | Both are rare in legitimate macOS distribution today and disproportionately seen in malware (Nuitka: Infiniti Stealer, Mar 2026), so unlike Go/Rust/Swift this does **not** suppress the symbol-count junk-code heuristic below |
+| Detected runtime is Go/Rust/Swift with high symbol count | 0 (suppressed) | Common legitimate toolchains produce thousands of symbols; junk-code heuristic is suppressed to avoid false positives |
+
 ### 5. Import/API Signals
 
 See `references/api-risk-db.md` for the full symbol mapping.
@@ -104,7 +115,11 @@ Run targeted string searches. Each match in suspicious context:
 | Hard-coded IP addresses | +2 | Possible C2 |
 | URL with uncommon TLD + encoded path | +3 | C2 indicator |
 | `/tmp/` + executable path | +3 | Staging to temp |
-| Base64-encoded blob in strings | +2 | Payload encoding |
+| Base64-encoded blob, no stronger sub-signal (`possible_base64`) | +2 | Payload encoding, generic |
+| Base64 blob decodes to CPython bytecode shape (`encoded_python_bytecode`) | +5 | Strong signal — an embedded compiled Python payload |
+| Base64 blob decodes to gzip/zip/zstd magic bytes (`encoded_compressed_payload`) | +3 | Nested "Matryoshka" encoding layer |
+| Base64 blob decodes to a shebang line (`encoded_script`) | +3 | Encoded script of any interpreter |
+| Base64 blob decodes to text matching another suspicious-string category | inherited from that category | Decoded content is recursively scanned against this same taxonomy (one level deep) when it's valid UTF-8 text and matches none of the three structural checks above — e.g. a base64-encoded `curl \| bash` reports as `download_execute`/HIGH, not the generic `possible_base64` |
 | Shell commands (`chmod 777`, `curl \| bash`) | +4 | Dropper behavior |
 | Keychain-related strings + network strings together | +3 | Credential theft |
 | Anti-VM strings (`VMware`, `VirtualBox`, `sandbox`) | +3 | Evasion attempt |
