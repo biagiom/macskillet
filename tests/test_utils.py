@@ -3,7 +3,7 @@ import os
 import pytest
 
 
-from macskillet.native.utils import _entropy, _parse_json_verdict
+from macskillet.common.utils import _entropy, _parse_json_verdict
 
 
 class TestEntropy:

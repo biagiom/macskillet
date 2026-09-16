@@ -66,7 +66,6 @@ def make_features(**overrides):
             "objc_classes": [], "objc_methods": [],
             "segments": [], "strings_of_interest": [],
         },
-        "clickfix": None,
         "obfuscation": None,
         "errors": [],
     }
@@ -202,37 +201,6 @@ class TestRunAgentFoundation:
 
 class TestPrecomputedSignalsIncluded:
 
-    def test_clickfix_signal_in_initial_message(self):
-        """ClickFix pre-computed result must appear in the prompt passed to session."""
-        features = make_features(clickfix={
-            "clickfix_suspected": True,
-            "confidence": "HIGH",
-            "delivery_chain": "chain_a_terminal",
-            "matched_indicators": [{"indicator": "base64 -d", "risk": "HIGH"}],
-            "score": 9,
-        })
-
-        captured_prompt = {}
-
-        async def fake_run_async(f):
-            from macskillet.native.agent_modes import _precomputed_signals_block
-            block = _precomputed_signals_block(f)
-            captured_prompt["block"] = block
-            return _MALICIOUS_VERDICT.copy(), []
-
-        with patch("macskillet.native.agent_loop_foundation.fm", MagicMock()), \
-             patch("macskillet.native.agent_loop_foundation._run_async", fake_run_async):
-            from macskillet.native.agent_loop_foundation import run_agent_foundation
-            with patch("macskillet.native.agent_loop_foundation.asyncio.run",
-                       side_effect=lambda coro: _MALICIOUS_VERDICT.copy() or (None, [])):
-                pass  # just check block content via _precomputed_signals_block directly
-
-        from macskillet.native.agent_modes import _precomputed_signals_block
-        block = _precomputed_signals_block(features)
-        assert "SUSPECTED" in block
-        assert "chain_a_terminal" in block
-        assert "ClickFix" in block
-
     def test_obfuscation_signal_in_block(self):
         features = make_features(obfuscation={
             "packing_suspected": True,
@@ -241,14 +209,30 @@ class TestPrecomputedSignalsIncluded:
             "techniques_detected": ["packer:UPX"],
             "score": 5,
         })
-        from macskillet.native.agent_modes import _precomputed_signals_block
+        from macskillet.common.agent_modes import _precomputed_signals_block
         block = _precomputed_signals_block(features)
         assert "Obfuscation/packing" in block
         assert "packer:UPX" in block
 
     def test_no_block_when_signals_absent(self):
-        features = make_features(clickfix=None, obfuscation=None)
-        from macskillet.native.agent_modes import _precomputed_signals_block
+        features = make_features(obfuscation=None)
+        from macskillet.common.agent_modes import _precomputed_signals_block
+        block = _precomputed_signals_block(features)
+        assert block == ""
+
+    def test_deep_scan_signal_in_block_when_enabled(self):
+        features = make_features(deep_scan={
+            "enabled": True,
+            "summary": "2 embedded item(s) scanned, 0 skipped, 1 flagged: installer.scpt.",
+        })
+        from macskillet.common.agent_modes import _precomputed_signals_block
+        block = _precomputed_signals_block(features)
+        assert "Deep scan" in block
+        assert "installer.scpt" in block
+
+    def test_no_deep_scan_line_when_disabled(self):
+        features = make_features(deep_scan={"enabled": False}, obfuscation=None)
+        from macskillet.common.agent_modes import _precomputed_signals_block
         block = _precomputed_signals_block(features)
         assert block == ""
 

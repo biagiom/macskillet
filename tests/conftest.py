@@ -15,7 +15,7 @@ def _ensure_anthropic_stub():
     """Inject a minimal anthropic stub into sys.modules if the real SDK is absent.
 
     This lets agent_modes.py's ``try: import anthropic`` succeed so that
-    ``patch("macskillet.native.agent_modes.anthropic.Anthropic")`` works in unit tests without
+    ``patch("macskillet.common.agent_modes.anthropic.Anthropic")`` works in unit tests without
     requiring the real Anthropic SDK to be installed.
     """
     if "anthropic" not in sys.modules or sys.modules["anthropic"] is None:

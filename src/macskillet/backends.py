@@ -23,7 +23,7 @@ to be read, so the portable backend is not a degraded native backend, it is the
 complete set of what is knowable from the artifact alone.
 
 Both expose the same tool-call contract, so every agent mode in
-:mod:`macskillet.native.agent_modes` runs unchanged against either.
+:mod:`macskillet.common.agent_modes` runs unchanged against either.
 
 Typical use::
 
@@ -64,7 +64,7 @@ class Backend:
 
     name: str
     description: str
-    _extract: Callable[[str], dict]
+    _extract: Callable[..., dict]
     _tools: Callable[[], list]
     _dispatch: Callable[[dict, str, dict], dict]
     _check: Callable[[], str | None]
@@ -85,10 +85,15 @@ class Backend:
 
     # -- pipeline ----------------------------------------------------------
 
-    def extract(self, path: str) -> dict:
-        """Extract features for ``path``. Result carries ``sample.backend``."""
+    def extract(self, path: str, deep_limit: int | None = None) -> dict:
+        """Extract features for ``path``. Result carries ``sample.backend``.
+
+        ``deep_limit``, when set, statically analyzes up to that many
+        additional bundle-internal items beyond the main executable (see
+        ``common/deep_scan.py``). Only meaningful for ``.app` bundles.
+        """
         self.require()
-        features = self._extract(path)
+        features = self._extract(path, deep_limit=deep_limit)
         features.setdefault("sample", {})["backend"] = self.name
         return features
 
@@ -107,7 +112,7 @@ class Backend:
 
     def classify(self, path: str, mode: str = "react", **kwargs: Any) -> dict:
         """Extract then classify in one call. See ``agent_modes`` for modes."""
-        from macskillet.native.agent_modes import run_mode
+        from macskillet.common.agent_modes import run_mode
 
         return run_mode(self.extract(path), mode=mode, backend=self, **kwargs)
 
@@ -144,38 +149,38 @@ def _check_portable() -> str | None:
 # not fail either.
 # ---------------------------------------------------------------------------
 
-def _native_extract(path: str) -> dict:
-    from macskillet.native.extract_features_native import extract
+def _native_extract(path: str, deep_limit: int | None = None) -> dict:
+    from macskillet.native.feature_extractor import extract
 
-    return extract(path)
+    return extract(path, deep_limit=deep_limit)
 
 
 def _native_tools() -> list:
-    from macskillet.native.tools_native import TOOLS
+    from macskillet.native.tools import TOOLS
 
     return TOOLS
 
 
 def _native_dispatch(features: dict, name: str, payload: dict) -> dict:
-    from macskillet.native.tools_native import dispatch_tool
+    from macskillet.native.tools import dispatch_tool
 
     return dispatch_tool(features, name, payload)
 
 
-def _portable_extract(path: str) -> dict:
+def _portable_extract(path: str, deep_limit: int | None = None) -> dict:
     from macskillet.portable.feature_extractor import extract
 
-    return extract(path)
+    return extract(path, deep_limit=deep_limit)
 
 
 def _portable_tools() -> list:
-    from macskillet.portable.tool_dispatcher import TOOLS
+    from macskillet.portable.tools import TOOLS
 
     return TOOLS
 
 
 def _portable_dispatch(features: dict, name: str, payload: dict) -> dict:
-    from macskillet.portable.tool_dispatcher import dispatch_tool
+    from macskillet.portable.tools import dispatch_tool
 
     return dispatch_tool(features, name, payload)
 

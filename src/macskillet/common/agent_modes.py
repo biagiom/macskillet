@@ -5,10 +5,11 @@ agent_modes.py — Agentic analysis modes for macskillet.
 Implements four analysis patterns for OBTS paper evaluation:
   - run_one_shot: single prompt, no tool use — fastest and cheapest
   - run_hierarchical: quick triage → full analysis if not clearly benign
+  - run_react: plain ReAct loop over the full tool set — the default mode
   - run_react_thinking: ReAct loop with extended thinking between tool calls
-  - _run_react_loop: shared helper used by run_hierarchical and run_agent()
+  - _run_react_loop: shared helper used by run_hierarchical and run_react()
 
-REACT_SYSTEM_PROMPT is the canonical prompt; import it in classify_bundle_native.py.
+REACT_SYSTEM_PROMPT is the canonical prompt, used directly by run_react() above.
 """
 
 import json
@@ -38,7 +39,7 @@ Work through these areas in order:
 5. ObjC classes/methods: behavioral intent (often unstripped)
 6. Entropy: high __TEXT entropy (>7.0) = packing
 7. Strings: C2 URLs, /tmp/ paths, shell commands, persistence strings
-8. Pre-computed signals: clickfix_precomputed and obfuscation_precomputed if present
+8. Pre-computed signals: obfuscation_precomputed if present
 
 Correlate all signals. Multiple weak signals outweigh a single strong signal.
 
@@ -154,24 +155,13 @@ When you have reached your verdict, output ONLY a JSON object (no surrounding te
 # ---------------------------------------------------------------------------
 
 def _precomputed_signals_block(features: dict) -> str:
-    """One-paragraph summary of pre-computed ClickFix and obfuscation results.
+    """One-paragraph summary of pre-computed obfuscation/deep-scan results.
 
     Included in the initial agent message so the agent can reference these
     synthesized signals during its reasoning without re-discovering them via tools.
     """
-    cf = features.get("clickfix") or {}
     ob = features.get("obfuscation") or {}
     lines = []
-
-    if cf:
-        suspected = cf.get("clickfix_suspected", False)
-        confidence = cf.get("confidence", "NONE")
-        chain = cf.get("delivery_chain") or "unknown"
-        n = len(cf.get("matched_indicators", []))
-        lines.append(
-            f"- ClickFix: {'SUSPECTED' if suspected else 'not suspected'} "
-            f"({confidence} confidence, {n} indicator(s), chain: {chain})"
-        )
 
     if ob:
         packing = ob.get("packing_suspected", False)
@@ -181,6 +171,10 @@ def _precomputed_signals_block(features: dict) -> str:
             f"- Obfuscation/packing: {'SUSPECTED' if packing else 'not suspected'} "
             f"({confidence} confidence, techniques: {techniques})"
         )
+
+    deep_scan = features.get("deep_scan") or {}
+    if deep_scan.get("enabled"):
+        lines.append(f"- Deep scan (--deep): {deep_scan.get('summary', '')}")
 
     if not lines:
         return ""
@@ -198,8 +192,8 @@ def _compact_features(features: dict) -> str:
     sig = features.get("signature") or {}
     bundle = features.get("bundle") or {}
     binary = features.get("binary") or {}
-    clickfix = features.get("clickfix") or {}
     obfuscation = features.get("obfuscation") or {}
+    deep_scan = features.get("deep_scan") or {}
 
     summary = {
         "sample": {
@@ -241,14 +235,14 @@ def _compact_features(features: dict) -> str:
                 {
                     "name": s.get("name"),
                     "entropy": s.get("entropy"),
-                    "high_entropy": s.get("high_entropy"),
+                    "high_entropy": s.get("status") in ("suspicious", "packed"),
                 }
-                for s in binary.get("segments", [])
+                for s in (obfuscation.get("entropy_analysis") or {}).get("segments", [])
             ],
-            "strings_of_interest": binary.get("strings_of_interest", [])[:30],
+            "strings_of_interest": features.get("strings_of_interest", [])[:30],
         },
-        "clickfix_precomputed": clickfix,
         "obfuscation_precomputed": obfuscation,
+        "deep_scan_precomputed": deep_scan,
     }
     return json.dumps(summary, indent=2, default=str)
 
@@ -281,7 +275,7 @@ def _run_react_loop(
     backend for this host, so the loop is identical on macOS (native tooling)
     and off it (LIEF) — that symmetry is the point of the two-pipeline design.
     """
-    from macskillet.native.utils import _parse_json_verdict
+    from macskillet.common.utils import _parse_json_verdict
 
     backend = _resolve_backend(backend)
 
@@ -343,7 +337,7 @@ def run_one_shot(features: dict, model: str = DEFAULT_CLAUDE_MODEL) -> dict:
     Passes all pre-extracted features as a compact JSON context. Fastest and
     cheapest mode; use as ablation baseline vs iterative modes.
     """
-    from macskillet.native.utils import _parse_json_verdict
+    from macskillet.common.utils import _parse_json_verdict
 
     if anthropic is None:
         raise ImportError("anthropic SDK not installed. Run: uv sync --extra claude")
@@ -500,7 +494,7 @@ def run_react_thinking(
     import anthropic
     backend = _resolve_backend(backend)
     TOOLS = backend.tools
-    from macskillet.native.utils import _parse_json_verdict
+    from macskillet.common.utils import _parse_json_verdict
 
     client = anthropic.Anthropic()
     sample = features.get("sample") or {}
@@ -612,7 +606,6 @@ def run_react(
     sample = features.get("sample", {})
     sig = features.get("signature") or {}
     pf = features.get("preflight") or {}
-    binary = features.get("binary") or {}
 
     extraction = (
         "Native macOS tools (otool, codesign, nm, spctl, xattr)"
@@ -630,7 +623,7 @@ def run_react(
         f"**Quick context:**\n"
         f"- Code signature: {sig.get('signing_status', 'unknown')}\n"
         f"- Quarantine present: {pf.get('has_quarantine', 'unknown')}\n"
-        f"- Strings of interest: {len(binary.get('strings_of_interest', []))}\n"
+        f"- Strings of interest: {len(features.get('strings_of_interest', []))}\n"
         f"{_precomputed_signals_block(features)}\n"
         "Begin your analysis. Use tools to gather information, then deliver your verdict as JSON."
     )

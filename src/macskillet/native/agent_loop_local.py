@@ -2,7 +2,7 @@
 """
 agent_loop_local.py — Agentic classification loop using a local LLM via Ollama.
 
-Drop-in replacement for classify_bundle_native.py's Claude-based agent.
+Drop-in replacement for common/agent_modes.py::run_react()'s Claude-based agent.
 Uses Ollama for fully on-device, offline inference with tool-use support.
 
 Supported models (tool-use capable):
@@ -27,9 +27,9 @@ import os
 import sys
 from pathlib import Path
 
-from macskillet.native.tools_native import TOOLS, dispatch_tool
-from macskillet.native.extract_features_native import extract
-from macskillet.native.utils import _parse_json_verdict
+from macskillet.native.tools import TOOLS, dispatch_tool
+from macskillet.native.feature_extractor import extract
+from macskillet.common.utils import _parse_json_verdict
 
 try:
     import ollama as ollama_client
@@ -162,7 +162,7 @@ def run_agent_local(
 ) -> dict:
     """
     Run the agentic classification loop using a local Ollama model.
-    Returns the same structured dict as run_agent() in classify_bundle_native.py.
+    Returns the same structured dict as run_react() in common/agent_modes.py.
     """
     if not OLLAMA_AVAILABLE:
         return {

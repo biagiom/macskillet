@@ -61,7 +61,7 @@ def _define_arg_schemas():
 
 def _make_tool(tool_name: str, tool_desc: str, arg_class, extractor, features: dict, log: list):
     """Return an fm.Tool instance that delegates to dispatch_tool()."""
-    from macskillet.native.tools_native import dispatch_tool
+    from macskillet.native.tools import dispatch_tool
 
     class _BuiltTool(fm.Tool):
         name = tool_name
@@ -83,7 +83,7 @@ def _make_tool(tool_name: str, tool_desc: str, arg_class, extractor, features: d
 
 def _build_tools(features: dict, log: list) -> list:
     """Instantiate all 13 agent tools as fm.Tool objects."""
-    from macskillet.native.tools_native import TOOLS
+    from macskillet.native.tools import TOOLS
 
     EmptyArgs, GetStringsArgs, GetSymbolsArgs, LookupApiRiskArgs = _define_arg_schemas()
 
@@ -131,8 +131,8 @@ def _build_tools(features: dict, log: list) -> list:
 
 async def _run_async(features: dict) -> tuple:
     """Async core. Single session.respond() — SDK handles tool loop internally."""
-    from macskillet.native.agent_modes import REACT_SYSTEM_PROMPT, _precomputed_signals_block
-    from macskillet.native.utils import _parse_json_verdict
+    from macskillet.common.agent_modes import REACT_SYSTEM_PROMPT, _precomputed_signals_block
+    from macskillet.common.utils import _parse_json_verdict
 
     fm_model = fm.SystemLanguageModel()
     is_available, reason = fm_model.is_available()
@@ -173,7 +173,7 @@ async def _run_async(features: dict) -> tuple:
 
 
 def run_agent_foundation(features: dict) -> dict:
-    """Synchronous entry point — called from classify_bundle_native.py."""
+    """Synchronous entry point — called from cli.py."""
     if fm is None:
         raise ImportError(
             "apple-fm-sdk not installed. Run: uv sync --extra apple\n"

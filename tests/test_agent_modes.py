@@ -10,7 +10,7 @@ import os
 from unittest.mock import patch, MagicMock
 
 
-from macskillet.native.agent_modes import run_one_shot, run_hierarchical, run_react_thinking
+from macskillet.common.agent_modes import run_one_shot, run_hierarchical, run_react_thinking
 
 
 def make_features(**overrides):
@@ -41,7 +41,6 @@ def make_features(**overrides):
             "objc_classes": [], "objc_methods": [],
             "segments": [], "strings_of_interest": [],
         },
-        "clickfix": None,
         "obfuscation": None,
         "errors": [],
     }
@@ -83,7 +82,7 @@ def _mock_response(text: str, input_tokens: int = 100, output_tokens: int = 50):
 # ---------------------------------------------------------------------------
 
 def test_run_one_shot_returns_all_required_fields():
-    with patch("macskillet.native.agent_modes.anthropic.Anthropic") as MockClient:
+    with patch("macskillet.common.agent_modes.anthropic.Anthropic") as MockClient:
         MockClient.return_value.messages.create.return_value = _mock_response(_BENIGN_VERDICT)
         result = run_one_shot(make_features())
 
@@ -98,7 +97,7 @@ def test_run_one_shot_returns_all_required_fields():
 
 
 def test_run_one_shot_fallback_on_unparseable_verdict():
-    with patch("macskillet.native.agent_modes.anthropic.Anthropic") as MockClient:
+    with patch("macskillet.common.agent_modes.anthropic.Anthropic") as MockClient:
         MockClient.return_value.messages.create.return_value = _mock_response("I cannot determine.")
         result = run_one_shot(make_features())
 
@@ -108,7 +107,7 @@ def test_run_one_shot_fallback_on_unparseable_verdict():
 
 
 def test_run_one_shot_calls_api_once():
-    with patch("macskillet.native.agent_modes.anthropic.Anthropic") as MockClient:
+    with patch("macskillet.common.agent_modes.anthropic.Anthropic") as MockClient:
         MockClient.return_value.messages.create.return_value = _mock_response(_BENIGN_VERDICT)
         run_one_shot(make_features())
 
@@ -140,7 +139,7 @@ def test_run_hierarchical_early_exit_on_benign_high():
         "reasoning_chain": [],
     })
 
-    with patch("macskillet.native.agent_modes.anthropic.Anthropic") as MockClient:
+    with patch("macskillet.common.agent_modes.anthropic.Anthropic") as MockClient:
         MockClient.return_value.messages.create.return_value = _make_end_turn_response(benign_triage)
         result = run_hierarchical(make_features())
         call_count = MockClient.return_value.messages.create.call_count
@@ -167,7 +166,7 @@ def test_run_hierarchical_proceeds_to_stage2_when_suspicious():
         "reasoning_chain": [],
     })
 
-    with patch("macskillet.native.agent_modes.anthropic.Anthropic") as MockClient:
+    with patch("macskillet.common.agent_modes.anthropic.Anthropic") as MockClient:
         MockClient.return_value.messages.create.side_effect = [
             _make_end_turn_response(suspicious_triage),
             _make_end_turn_response(malicious_full),
@@ -198,7 +197,7 @@ def test_run_hierarchical_benign_medium_confidence_proceeds_to_stage2():
         "reasoning_chain": [],
     })
 
-    with patch("macskillet.native.agent_modes.anthropic.Anthropic") as MockClient:
+    with patch("macskillet.common.agent_modes.anthropic.Anthropic") as MockClient:
         MockClient.return_value.messages.create.side_effect = [
             _make_end_turn_response(benign_medium),
             _make_end_turn_response(benign_full),
@@ -229,7 +228,7 @@ def _make_thinking_response(verdict_text: str):
 
 
 def test_run_react_thinking_returns_verdict_with_mode():
-    with patch("macskillet.native.agent_modes.anthropic.Anthropic") as MockClient:
+    with patch("macskillet.common.agent_modes.anthropic.Anthropic") as MockClient:
         MockClient.return_value.beta.messages.create.return_value = (
             _make_thinking_response(_MALICIOUS_VERDICT)
         )
@@ -243,7 +242,7 @@ def test_run_react_thinking_returns_verdict_with_mode():
 
 def test_run_react_thinking_uses_beta_api():
     """Must call client.beta.messages.create (not client.messages.create)."""
-    with patch("macskillet.native.agent_modes.anthropic.Anthropic") as MockClient:
+    with patch("macskillet.common.agent_modes.anthropic.Anthropic") as MockClient:
         MockClient.return_value.beta.messages.create.return_value = (
             _make_thinking_response(_BENIGN_VERDICT)
         )
@@ -254,7 +253,7 @@ def test_run_react_thinking_uses_beta_api():
 
 
 def test_run_react_thinking_fallback_on_bad_verdict():
-    with patch("macskillet.native.agent_modes.anthropic.Anthropic") as MockClient:
+    with patch("macskillet.common.agent_modes.anthropic.Anthropic") as MockClient:
         MockClient.return_value.beta.messages.create.return_value = (
             _make_thinking_response("No verdict yet.")
         )
