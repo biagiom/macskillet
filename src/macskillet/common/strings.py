@@ -144,6 +144,20 @@ def _shannon_entropy(value: str) -> float:
     return entropy
 
 
+def _try_b64decode(value: str) -> bytes | None:
+    """Strict base64 decode, or ``None`` if it doesn't round-trip.
+
+    Shared by :func:`is_base64` (validation) and :func:`_classify_base64_payload`
+    (content classification), so there's one decode implementation rather than
+    two call sites each doing their own try/except around ``base64.b64decode``.
+    """
+    try:
+        decoded = base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    return decoded or None
+
+
 def is_base64(value: str) -> bool:
     """True if ``value`` is plausibly an encoded payload, not merely base64-shaped.
 
@@ -160,13 +174,73 @@ def is_base64(value: str) -> bool:
         return False
     if _MANGLED_SYMBOL_RE.match(value):
         return False
-    try:
-        decoded = base64.b64decode(value, validate=True)
-    except (binascii.Error, ValueError):
-        return False
-    if not decoded:
+    if _try_b64decode(value) is None:
         return False
     return _shannon_entropy(value) >= _MIN_BASE64_ENTROPY
+
+
+#: Compression magic numbers that signal a nested encoding layer (the
+#: "Matryoshka" pattern — base64-then-compress — documented in prior ClickFix
+#: research as a common obfuscation chain).
+_COMPRESSION_MAGIC = (
+    (b"\x1f\x8b", "gzip"),
+    (b"PK\x03\x04", "zip"),
+    (b"\x28\xb5\x2f\xfd", "zstd"),
+)
+
+
+def _classify_base64_payload(decoded: bytes) -> tuple[str, str, str] | None:
+    """Classify already-decoded base64 content into a more specific category
+    than the generic ``possible_base64``, when a stronger sub-signal is present.
+
+    Checked in priority order (bytecode, then compressed, then shebang, then a
+    recursive suspicious-string scan of the decoded text) — not because of an
+    observed conflict (a still-compressed blob's shebang is buried inside the
+    compressed stream and invisible in the raw decoded prefix, so these checks
+    are naturally mutually exclusive already), but because each earlier check
+    is stronger/cheaper evidence than the next. The recursive scan only runs
+    on validly UTF-8-decoded text and is itself one level deep (it disables
+    further base64 classification via ``scan(..., _classify_base64=False)``),
+    so a base64-shaped substring inside the decoded text is not itself decoded.
+
+    Returns ``(category, risk, description)`` or ``None`` if nothing stronger
+    than the generic ``possible_base64`` classification applies.
+    """
+    if len(decoded) >= 4 and decoded[2:4] == b"\r\n":
+        # Structural, version-agnostic CPython bytecode magic-number shape
+        # (2-byte version-specific prefix + the fixed \r\n suffix that's held
+        # across CPython versions for the modern magic-number format) — not
+        # an exact per-version magic-number table, to avoid the table going
+        # stale as new Python versions ship.
+        return (
+            "encoded_python_bytecode",
+            "HIGH",
+            "Decoded base64 content has the structural shape of compiled "
+            "CPython bytecode (.pyc magic number).",
+        )
+    for magic, name in _COMPRESSION_MAGIC:
+        if decoded.startswith(magic):
+            return (
+                "encoded_compressed_payload",
+                "MEDIUM",
+                f"Decoded base64 content is {name}-compressed — a nested "
+                "encoding layer (\"Matryoshka\" pattern).",
+            )
+    if decoded.startswith(b"#!"):
+        return (
+            "encoded_script",
+            "MEDIUM",
+            "Decoded base64 content begins with a shebang — an encoded script.",
+        )
+    try:
+        text = decoded.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    matches = scan([text], max_results=1, _classify_base64=False)
+    if matches:
+        m = matches[0]
+        return (m["category"], m["risk"], m["description"] + " (found in decoded base64 content)")
+    return None
 
 
 #: The canonical rule set. Replaces the two prior copies.
@@ -299,12 +373,60 @@ SUSPICIOUS_PATTERNS: list[StringPattern] = [
         Risk.HIGH,
         "Anti-debugging check.",
     ),
+    # -- Malware family markers ---------------------------------------------
+    StringPattern(
+        "malware_family_marker",
+        r"\bosalogging\b|\breceiveex\.php\b|\bopenex\.php\b|\bjoinsystem\b"
+        r"|\benablesocks5\b|\.mainhelper\b|\bOdyssey\b",
+        Risk.HIGH,
+        "AMOS/Odyssey Stealer family marker — staging path, C2 endpoint, or botnet command.",
+    ),
+    # -- TCC abuse -----------------------------------------------------------
+    StringPattern(
+        "tcc_abuse",
+        r"\bTCC\.db\b|\btccutil\s+reset\b",
+        Risk.HIGH,
+        "Direct TCC database access or TCC reset — privacy-protected data theft or "
+        "re-prompting for permissions.",
+    ),
+    # -- Developer-secret harvesting ------------------------------------------
+    StringPattern(
+        "dev_secret_harvest",
+        r"\.npmrc\b|\.docker/config\.json\b|\.config/gcloud\b|terraform\.tfstate\b",
+        Risk.HIGH,
+        "Developer credential file targeting — npm/Docker/GCP secret theft, or a Terraform "
+        "state file that may contain plaintext cloud secrets.",
+    ),
+    # -- Legitimate-cloud C2 / exfil ------------------------------------------
+    StringPattern(
+        "cloud_c2_exfil",
+        r"api\.telegram\.org|dropboxapi\.com",
+        Risk.HIGH,
+        "Legitimate-cloud API used as exfiltration/C2 channel (Telegram bot / Dropbox).",
+    ),
+    StringPattern(
+        "cloud_hosting_abuse",
+        r"\.vercel\.app|\.pages\.dev",
+        Risk.MEDIUM,
+        "Legitimate-cloud static hosting used as C2/payload host (Vercel/Cloudflare Pages) — "
+        "these domains are also common in benign apps, so this is weaker signal than "
+        "cloud_c2_exfil and does not by itself corroborate signed-sample trust revocation.",
+    ),
+    # -- Shell-config persistence ---------------------------------------------
+    StringPattern(
+        "shell_config_persistence",
+        r"\.zshenv\b|\.zshrc\b|\.bash_profile\b",
+        Risk.MEDIUM,
+        "Shell-config persistence via ~/.zshenv, ~/.zshrc, or ~/.bash_profile — also written "
+        "by many legitimate installers (Homebrew, nvm, pyenv), so kept at MEDIUM.",
+    ),
     # -- Encoding ----------------------------------------------------------
     # The lookaround boundaries force the match to be a *whole* token. Without
     # them the scanner happily carved "observationRegistrar" out of the Swift
     # symbol "_$observationRegistrar" and called it base64.
     StringPattern(
         "possible_base64",
+        # r"(?:[A-Za-z0-9+\/]{4})*(?:[A-Za-z0-9+\/]{2}==|[A-Za-z0-9+\/]{3}=|[A-Za-z0-9+\/]{4})",
         r"(?<![A-Za-z0-9+/=])"
         r"(?:[A-Za-z0-9+/]{4})+(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?"
         r"(?![A-Za-z0-9+/=])",
@@ -376,7 +498,7 @@ def _match_categories(text: str) -> list[tuple[StringPattern, str]]:
     return hits
 
 
-def scan(strings, max_results: int = DEFAULT_MAX_RESULTS) -> list[dict]:
+def scan(strings, max_results: int = DEFAULT_MAX_RESULTS, _classify_base64: bool = True) -> list[dict]:
     """Match ``strings`` against the pattern table and return ranked findings.
 
     Behaviour that differs from the code this replaces:
@@ -407,11 +529,19 @@ def scan(strings, max_results: int = DEFAULT_MAX_RESULTS) -> list[dict]:
             existing["occurrences"] += 1
             continue
 
+        category, risk, description = best[0].category, best[0].risk, best[0].description
+        if category == "possible_base64" and _classify_base64:
+            decoded = _try_b64decode(best[1])
+            if decoded is not None:
+                classified = _classify_base64_payload(decoded)
+                if classified is not None:
+                    category, risk, description = classified
+
         findings[value] = {
             "value": value,
-            "category": best[0].category,
-            "risk": best[0].risk,
-            "description": best[0].description,
+            "category": category,
+            "risk": risk,
+            "description": description,
             "matched": best[1][:_MAX_VALUE_LEN],
             "all_categories": sorted({spec.category for spec, _ in hits}),
             "occurrences": 1,

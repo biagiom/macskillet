@@ -3,9 +3,9 @@
     "name": "ls",
     "path": "/bin/ls",
     "type": "macho_binary",
-    "sha256": "f90c753b625f3ca75d33bf8fdda26991c1816e4c6fe17808dfd1fedc423c8936",
-    "md5": "4791ea409d08aa178907ea9e52c5e5b9",
-    "filesize_bytes": 154624,
+    "sha256": "24752389e1d97c9555dd153b644902fadd460dfbe1a166251876c67bbacb0810",
+    "md5": "ec4722ce408f7c68a9cb3013c5830a83",
+    "filesize_bytes": 154208,
     "extraction_tool": "native-macos"
   },
   "preflight": {
@@ -16,7 +16,11 @@
     "download_origin_urls": [],
     "downloaded_date": null,
     "all_xattrs": [],
-    "spotlight_metadata": {}
+    "spotlight_metadata": {
+      "kMDItemFSCreationDate": "2026-08-13 02:51:55 +0000",
+      "kMDItemFSContentChangeDate": "2026-08-13 02:51:55 +0000",
+      "kMDItemContentType": "public.unix-executable"
+    }
   },
   "bundle": null,
   "signature": {
@@ -30,17 +34,18 @@
     "bundle_id_from_sig": null,
     "identifier": "com.apple.ls",
     "authority_chain": [
-      "Software Signing",
+      "macOS Software Signing",
       "Apple Code Signing Certification Authority",
       "Apple Root CA"
     ],
     "flags_raw": "0x0(none)",
     "gatekeeper_verdict": "/bin/ls: rejected (the code is valid but does not seem to be an app)",
+    "verification": "cryptographic",
     "gatekeeper_source": "",
     "entitlements": {},
     "entitlements_raw": "",
     "codesign_verify_output": "/bin/ls: valid on disk\n/bin/ls: satisfies its Designated Requirement\n",
-    "codesign_display_output": "Executable=/bin/ls\nIdentifier=com.apple.ls\nFormat=Mach-O universal (x86_64 arm64e)\nCodeDirectory v=20400 size=741 flags=0x0(none) hashes=18+2 location=embedded\nPlatform identifier=26\nVersionPlatform=1\nVersionMin=720896\nVersionSDK=1704960\nHash type=sha256 size=32\nCandidateCDHash sha256=1205ca11b1c3f706109656bcf4e2c12439d843b7\nCandidateCDHashFull sha256=1205ca11b1c3f706109656bcf4e2c12439d843b74be581dcfc9f84a5d2f31543\nHash choices=sha256\nCMSDigest=1205ca11b1c3f706109656bcf4e2c12439d843b74be581dcfc9f84a5d2f31543\nCMSDigestType=2\nExecutable Segment base=0\nExecutable Segment limit=32768\nExecutable Segment flags=0x1\nPage size=4096\nCDHash=1205ca11b1c3f706109656bcf4e2c12439d843b7\nSignature size=4442\nAuthority=Software Signing\nAuthority=Apple Code Signing Certification Authority\nAuthority=Apple Root CA\nSigned Time=24.02.2026 at 13:43:13\nInfo.plist=not bound\nTeamIdentifier=not set\nSealed Resources=none\nInternal requirements count=1 size=60\n"
+    "codesign_display_output": "Executable=/bin/ls\nIdentifier=com.apple.ls\nFormat=Mach-O universal (x86_64 arm64e)\nCodeDirectory v=20400 size=325 flags=0x0(none) hashes=5+2 location=embedded\nPlatform identifier=26\nVersionPlatform=1\nVersionMin=720896\nVersionSDK=1705473\nHash type=sha256 size=32\nCandidateCDHash sha256=13de035b6db1093fe20aef0bd81bfe9df5a671df\nCandidateCDHashFull sha256=13de035b6db1093fe20aef0bd81bfe9df5a671dfdde8be87c51ca56da5756755\nHash choices=sha256\nCMSDigest=13de035b6db1093fe20aef0bd81bfe9df5a671dfdde8be87c51ca56da5756755\nCMSDigestType=2\nExecutable Segment base=0\nExecutable Segment limit=32768\nExecutable Segment flags=0x1\nPage size=16384\nCDHash=13de035b6db1093fe20aef0bd81bfe9df5a671df\nSignature size=4567\nAuthority=macOS Software Signing\nAuthority=Apple Code Signing Certification Authority\nAuthority=Apple Root CA\nSigned Time=01.08.2026 at 03:34:01\nInfo.plist=not bound\nTeamIdentifier=not set\nSealed Resources=none\nInternal requirements count=1 size=60\n"
   },
   "binary": {
     "architectures": [
@@ -261,52 +266,105 @@
         "name": "__TEXT",
         "fileoff": 0,
         "filesize": 32768,
-        "entropy": 3.5519,
-        "high_entropy": false
+        "entropy": 3.5523
       },
       {
         "name": "__DATA_CONST",
         "fileoff": 32768,
         "filesize": 16384,
-        "entropy": 4.8859,
-        "high_entropy": false
+        "entropy": 4.8715
       },
       {
         "name": "__DATA",
         "fileoff": 49152,
         "filesize": 16384,
-        "entropy": 1.2899,
-        "high_entropy": false
+        "entropy": 1.372
       },
       {
         "name": "__LINKEDIT",
         "fileoff": 65536,
-        "filesize": 23552,
-        "entropy": 5.542,
-        "high_entropy": false
+        "filesize": 23136,
+        "entropy": 5.6127
       }
     ],
     "has_encryption": false,
     "encryption_cryptid": null,
     "entry_point": 2400,
-    "strings_of_interest": [
-      {
-        "value": "usage: ls [-@ABCFGHILOPRSTUWXabcdefghiklmnopqrstuvwxy1%%,] [--color=when] [-D format] [file ...]",
-        "category": "possible_base64",
-        "risk": "MEDIUM"
-      }
-    ],
     "otool_header_raw": "/bin/ls:\nMach header\n      magic  cputype cpusubtype  caps    filetype ncmds sizeofcmds      flags\n 0xfeedfacf 16777228          2  0x80           2    20       1712 0x00200085\n"
   },
-  "clickfix": {
-    "clickfix_suspected": false,
-    "confidence": "NONE",
-    "delivery_chain": null,
-    "matched_indicators": [],
-    "score": 0,
-    "filename_suspicious": false,
-    "binary_signatures": [],
-    "summary": "No ClickFix indicators detected (0 checks run)."
+  "strings_of_interest": [
+    {
+      "value": "(http://crl.apple.com/codesigningcag2.crl0",
+      "category": "url",
+      "risk": "MEDIUM",
+      "description": "Embedded HTTP(S) URL \u2014 candidate C2 or payload host.",
+      "matched": "http://crl.apple.com/codesigningcag2.crl0",
+      "all_categories": [
+        "url"
+      ],
+      "occurrences": 2
+    },
+    {
+      "value": "(http://ocsp.apple.com/ocsp03-applerootca0",
+      "category": "url",
+      "risk": "MEDIUM",
+      "description": "Embedded HTTP(S) URL \u2014 candidate C2 or payload host.",
+      "matched": "http://ocsp.apple.com/ocsp03-applerootca0",
+      "all_categories": [
+        "url"
+      ],
+      "occurrences": 2
+    },
+    {
+      "value": ".http://ocsp.apple.com/ocsp03-codesigningcag2010",
+      "category": "url",
+      "risk": "MEDIUM",
+      "description": "Embedded HTTP(S) URL \u2014 candidate C2 or payload host.",
+      "matched": "http://ocsp.apple.com/ocsp03-codesigningcag2010",
+      "all_categories": [
+        "url"
+      ],
+      "occurrences": 2
+    },
+    {
+      "value": "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">",
+      "category": "url",
+      "risk": "MEDIUM",
+      "description": "Embedded HTTP(S) URL \u2014 candidate C2 or payload host.",
+      "matched": "http://www.apple.com/DTDs/PropertyList-1.0.dtd",
+      "all_categories": [
+        "url"
+      ],
+      "occurrences": 2
+    },
+    {
+      "value": "http://crl.apple.com/root.crl0",
+      "category": "url",
+      "risk": "MEDIUM",
+      "description": "Embedded HTTP(S) URL \u2014 candidate C2 or payload host.",
+      "matched": "http://crl.apple.com/root.crl0",
+      "all_categories": [
+        "url"
+      ],
+      "occurrences": 2
+    },
+    {
+      "value": "https://www.apple.com/appleca/0",
+      "category": "url",
+      "risk": "MEDIUM",
+      "description": "Embedded HTTP(S) URL \u2014 candidate C2 or payload host.",
+      "matched": "https://www.apple.com/appleca/0",
+      "all_categories": [
+        "url"
+      ],
+      "occurrences": 2
+    }
+  ],
+  "applescript_analysis": {
+    "runonly_applescript": false,
+    "compiled_applescript": false,
+    "indicators": [],
+    "detail": "no AppleScript script data found"
   },
   "obfuscation": {
     "obfuscation_suspected": true,
@@ -328,7 +386,7 @@
         {
           "name": "__TEXT",
           "filesize": 32768,
-          "entropy": 3.5519,
+          "entropy": 3.5523,
           "status": "normal",
           "threshold_suspicious": 7.0,
           "threshold_packed": 7.5
@@ -336,7 +394,7 @@
         {
           "name": "__DATA_CONST",
           "filesize": 16384,
-          "entropy": 4.8859,
+          "entropy": 4.8715,
           "status": "normal",
           "threshold_suspicious": 6.5,
           "threshold_packed": 7.0
@@ -344,15 +402,15 @@
         {
           "name": "__DATA",
           "filesize": 16384,
-          "entropy": 1.2899,
+          "entropy": 1.372,
           "status": "normal",
           "threshold_suspicious": 6.8,
           "threshold_packed": 7.2
         },
         {
           "name": "__LINKEDIT",
-          "filesize": 23552,
-          "entropy": 5.542,
+          "filesize": 23136,
+          "entropy": 5.6127,
           "status": "normal",
           "threshold_suspicious": 7.8,
           "threshold_packed": 7.95
@@ -360,7 +418,8 @@
       ],
       "high_entropy_segments": [],
       "packing_suspected_via_entropy": false,
-      "max_entropy": 5.541974684715074,
+      "packing_ratio": 0.0,
+      "max_entropy": 5.61265477038866,
       "suspicious_segment": "__LINKEDIT"
     },
     "string_density": {
@@ -382,21 +441,21 @@
     "section_analysis": {
       "suspicious_sections": [],
       "section_names": [
+        "__DATA_CONST",
+        "__text",
         "__cstring",
-        "__data",
+        "__const",
+        "__unwind_info",
+        "__bss",
         "__TEXT",
         "__auth_got",
-        "__const",
-        "__bss",
-        "__DATA",
-        "__auth_stubs",
-        "__LINKEDIT",
-        "__unwind_info",
         "__common",
+        "__DATA",
+        "__LINKEDIT",
+        "__auth_stubs",
+        "__data",
         "__got",
-        "__DATA_CONST",
-        "__PAGEZERO",
-        "__text"
+        "__PAGEZERO"
       ],
       "status": "normal"
     },
@@ -410,5 +469,23 @@
     "summary": "Packing/obfuscation DETECTED (LOW confidence). Techniques: low_string_density. Score: 5.",
     "junk_code_suspected": false
   },
-  "errors": []
+  "deep_scan": {
+    "enabled": false
+  },
+  "errors": [],
+  "signature_trust": {
+    "trust_level": "trusted",
+    "base_credit": -2,
+    "claimed_credit": -2,
+    "adjustment": -2,
+    "override_applied": false,
+    "verification": "cryptographic",
+    "verified": true,
+    "tamper_detected": false,
+    "credit_withheld": false,
+    "reasons": [
+      "apple_signed (notarized=False) \u2014 trust credit -2"
+    ],
+    "summary": "apple_signed (notarized=False) \u2014 trust credit -2"
+  }
 }

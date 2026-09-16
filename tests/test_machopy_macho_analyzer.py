@@ -135,6 +135,40 @@ def test_analyze_macho_bad_path_returns_error():
     assert "error" in result
 
 
+# ---------------------------------------------------------------------------
+# Obfuscation-detection raw data (symbols, sections, encryption)
+# ---------------------------------------------------------------------------
+
+def test_analyze_macho_has_symbol_counts():
+    result = analyze_macho(REAL_BINARY)
+    for arch, data in result.items():
+        assert isinstance(data["import_count"], int) and data["import_count"] > 0
+        assert isinstance(data["export_count"], int)
+        assert isinstance(data["total_symbol_count"], int) and data["total_symbol_count"] > 0
+        assert data["total_symbol_count"] >= data["import_count"]
+
+
+def test_analyze_macho_has_section_names():
+    result = analyze_macho(REAL_BINARY)
+    for arch, data in result.items():
+        assert isinstance(data["section_names"], list)
+        assert "__text" in data["section_names"]
+
+
+def test_analyze_macho_symbol_names_sample_capped_at_200():
+    result = analyze_macho(REAL_BINARY)
+    for arch, data in result.items():
+        assert isinstance(data["symbol_names_sample"], list)
+        assert len(data["symbol_names_sample"]) <= 200
+        assert all(isinstance(s, str) for s in data["symbol_names_sample"])
+
+
+def test_analyze_macho_has_encryption_false_for_unencrypted_binary():
+    result = analyze_macho(REAL_BINARY)
+    for arch, data in result.items():
+        assert data["has_encryption"] is False
+
+
 @pytest.mark.integration
 def test_analyze_macho_fat_binary_has_multiple_arches():
     """FAT binary has >1 arch. Requires macOS system binary (always FAT on Apple Silicon)."""

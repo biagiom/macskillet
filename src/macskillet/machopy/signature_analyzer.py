@@ -29,10 +29,15 @@ The distinction that remains is reported in ``verification``:
     A cryptographic check was attempted and failed: a broken page hash, a CMS
     signature that doesn't verify, or a chain that doesn't reach a pinned
     root. This is *evidence*, not silence — treat it as more alarming than
-    "structural", not as a synonym for it.
-``"structural"``
-    No verification was possible (missing dependency, no code signature to
-    check, or nothing suspicious found but nothing confirmed either).
+    "unverified", not as a synonym for it.
+``"unverified"``
+    No cryptographic determination was reached — for one of several distinct
+    reasons, not just one: no code signature present at all; a signature
+    present but with nothing cryptographic to check (ad-hoc, no CMS blob);
+    a dependency missing (``asn1crypto`` not installed); or no pinned root
+    certificates available to anchor the chain. All of these are absence of
+    proof, never evidence of tampering, and are reported the same way
+    regardless of which of these caused it.
 
 Downstream trust logic must not treat these as equivalent. This is also why
 ``select_backend`` never silently downgrades an explicit backend choice.
@@ -57,7 +62,7 @@ OTHER_SIGNED = "other_signed"
 #: verification levels
 CRYPTOGRAPHIC = "cryptographic"
 INVALID = "invalid"
-STRUCTURAL = "structural"
+UNVERIFIED = "unverified"
 
 
 def _empty_result() -> dict:
@@ -72,7 +77,7 @@ def _empty_result() -> dict:
         "entitlements_xml": "",
         "entitlements": {},
         "codesign_display": "",
-        "verification": STRUCTURAL,
+        "verification": UNVERIFIED,
         "analyzer": None,
     }
 
@@ -150,7 +155,7 @@ def _analyze_with_codesign(path: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Portable path — structural parsing
+# Portable path — offline cryptographic verification via code_signature_verifier
 # ---------------------------------------------------------------------------
 
 def _parse_entitlements_xml(xml: str) -> dict:
@@ -258,7 +263,7 @@ def _apply_verification_result(result: dict, verification: dict) -> None:
         errors = [e for s in signed_slices for e in s.get("errors", [])]
         result["codesign_verify_output"] = "; ".join(errors) or "signature verification failed"
     else:
-        result["verification"] = STRUCTURAL
+        result["verification"] = UNVERIFIED
         notes = [n for s in signed_slices for n in s.get("notes", [])]
         if notes:
             result["codesign_verify_output"] = "; ".join(notes)
@@ -272,8 +277,9 @@ def analyze_signature(path: str, prefer_codesign: bool = True) -> dict:
     """Return structured signature info for ``path``.
 
     Uses ``codesign``/``spctl`` when available (authoritative), otherwise falls
-    back to structural parsing. Check the ``verification`` field before acting
-    on ``signing_status``.
+    back to offline cryptographic verification via
+    :mod:`macskillet.machopy.code_signature_verifier`. Check the
+    ``verification`` field before acting on ``signing_status``.
     """
     if prefer_codesign and codesign_available():
         return _analyze_with_codesign(path)

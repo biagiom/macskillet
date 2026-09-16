@@ -86,10 +86,6 @@ def parse_symbol(symbol):
     return symbol
 
 
-# is_base64 now lives in macskillet.common.strings (imported above) so the ML
-# vector and the agent findings share one definition of 'looks encoded'.
-
-
 def get_shannon_entropy(bytez):
 
     entropy = 0

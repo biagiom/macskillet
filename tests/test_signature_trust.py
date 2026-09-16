@@ -3,8 +3,9 @@ test_signature_trust.py — Unit tests for signature_trust.py
 
 Risk-signal helper implementing the "notarized != safe" finding from the
 2026 vendor-blog literature synthesis: a Developer-ID-signed / notarized app
-that ALSO exhibits ClickFix-style delivery/exfil behavior must NOT receive the
-normal signing trust credit — the credit is revoked and a penalty applied.
+that ALSO shows run-only AppleScript or a suspicious-string category match
+must NOT receive the normal signing trust credit — the credit is revoked and
+a penalty applied.
 
 Run from repo root:
     python3 -m pytest tests/test_signature_trust.py -v
@@ -17,14 +18,19 @@ import os
 from macskillet.common.signature_trust import assess_signature_trust
 
 
-def make_features(signing_status="unsigned", notarized=False, clickfix=None,
-                  verification="cryptographic"):
+def make_features(signing_status="unsigned", notarized=False, suspicious_category=None,
+                  runonly_applescript=False, verification="cryptographic"):
     """Build a minimal features dict for signature-trust testing.
 
     Defaults to ``verification="cryptographic"`` to match what the native
-    (codesign-backed) extractor produces. Pass ``"structural"`` to model the
+    (codesign-backed) extractor produces. Pass ``"unverified"`` to model the
     cross-platform pipeline, or ``None`` to model a features blob predating
     the field.
+
+    ``suspicious_category`` models a suspicious-string finding (top-level
+    ``features["strings_of_interest"]``, the same shape on both pipelines) and
+    ``runonly_applescript`` models the obfuscation-detector signal — the two
+    inputs ``_has_suspicious_behavior`` reads.
     """
     signature = {
         "signed": signing_status not in ("unsigned",),
@@ -33,39 +39,31 @@ def make_features(signing_status="unsigned", notarized=False, clickfix=None,
     }
     if verification is not None:
         signature["verification"] = verification
+    findings = []
+    if suspicious_category:
+        findings.append({"value": "x", "category": suspicious_category, "risk": "HIGH"})
     return {
         "signature": signature,
-        "clickfix": clickfix or {
-            "clickfix_suspected": False,
-            "matched_indicators": [],
-        },
+        "strings_of_interest": findings,
+        # {runonly_applescript, compiled_applescript, indicators} nested under
+        # the top-level applescript_analysis wrapper key — same shape on both
+        # pipelines.
+        "applescript_analysis": {"runonly_applescript": runonly_applescript},
     }
 
 
-CLICKFIX_HIT = {
-    "clickfix_suspected": True,
-    "matched_indicators": [
-        {"indicator": "do shell script", "category": "script_editor",
-         "risk": "HIGH", "detail": ""},
-    ],
-}
+SUSPICIOUS_HIT = {"suspicious_category": "automation"}
 
 
 class TestTrustCreditRevocation:
 
-    def test_notarized_but_clickfix_revokes_trust_credit(self):
-        """Developer-ID + notarized app showing ClickFix behavior loses its
+    def test_notarized_but_suspicious_string_revokes_trust_credit(self):
+        """Developer-ID + notarized app with a suspicious-string match loses its
         trust credit and gets a positive penalty instead."""
         features = make_features(
             signing_status="developer_id",
             notarized=True,
-            clickfix={
-                "clickfix_suspected": True,
-                "matched_indicators": [
-                    {"indicator": "do shell script", "category": "script_editor",
-                     "risk": "HIGH", "detail": ""},
-                ],
-            },
+            **SUSPICIOUS_HIT,
         )
         result = assess_signature_trust(features)
         assert result["override_applied"] is True
@@ -86,6 +84,34 @@ class TestTrustCreditRevocation:
         result = assess_signature_trust(features)
         assert result["override_applied"] is False
         assert result["adjustment"] == -2
+
+    def test_notarized_but_runonly_applescript_revokes_trust_credit(self):
+        """The obfuscation-detector signal alone (no string match) also triggers
+        the override — read from the shared top-level
+        features["applescript_analysis"] path both pipelines populate."""
+        features = make_features(
+            signing_status="developer_id", notarized=True, runonly_applescript=True,
+        )
+        result = assess_signature_trust(features)
+        assert result["override_applied"] is True
+        assert result["trust_level"] == "suspicious_signed"
+
+    def test_notarized_minimal_features_dict_applescript_revokes_trust_credit(self):
+        """A hand-built minimal features dict (no obfuscation key at all, as a
+        pipeline might produce if that detector found nothing else worth
+        reporting) still triggers the gate via the top-level
+        features["applescript_analysis"] path."""
+        features = {
+            "signature": {
+                "signed": True, "signing_status": "developer_id", "notarized": True,
+                "verification": "cryptographic",
+            },
+            "strings_of_interest": [],
+            "applescript_analysis": {"runonly_applescript": True},
+        }
+        result = assess_signature_trust(features)
+        assert result["override_applied"] is True
+        assert result["trust_level"] == "suspicious_signed"
 
 
 class TestSigningTierMapping:
@@ -108,14 +134,11 @@ class TestSigningTierMapping:
         assert result["adjustment"] == 0
         assert result["override_applied"] is False
 
-    def test_unsigned_with_clickfix_not_overridden_just_untrusted(self):
+    def test_unsigned_with_suspicious_string_not_overridden_just_untrusted(self):
         """No trust credit to revoke -> no override, stays its base risk."""
         features = make_features(
             signing_status="unsigned",
-            clickfix={"clickfix_suspected": True,
-                      "matched_indicators": [
-                          {"indicator": "base64 -d", "category": "delivery",
-                           "risk": "HIGH", "detail": ""}]},
+            suspicious_category="download_execute",
         )
         result = assess_signature_trust(features)
         assert result["override_applied"] is False
@@ -139,24 +162,24 @@ class TestOutputContract:
 class TestVerificationGate:
     """Trust credit requires a cryptographically verified signature.
 
-    Under structural parsing the signing identity is read as ASCII from the
+    Under an unverified signature the signing identity is read as ASCII from the
     certificate chain, so a binary that merely *contains* "Apple Root CA" or a
     Developer ID common name reports as signed by them. Granting negative
     credit on that is forgeable with a string literal.
     """
 
-    def test_structural_apple_signed_gets_no_trust_credit(self):
+    def test_unverified_apple_signed_gets_no_trust_credit(self):
         features = make_features(signing_status="apple_signed", notarized=True,
-                                 verification="structural")
+                                 verification="unverified")
         result = assess_signature_trust(features)
         assert result["adjustment"] == 0
         assert result["credit_withheld"] is True
         assert result["claimed_credit"] == -2
         assert result["trust_level"] == "unverified_signature"
 
-    def test_structural_developer_id_gets_no_trust_credit(self):
+    def test_unverified_developer_id_gets_no_trust_credit(self):
         features = make_features(signing_status="developer_id", notarized=True,
-                                 verification="structural")
+                                 verification="unverified")
         result = assess_signature_trust(features)
         assert result["adjustment"] == 0
         assert result["verified"] is False
@@ -173,15 +196,15 @@ class TestVerificationGate:
         """Absence of a signature is observable without a trust store."""
         for status, expected in (("unsigned", 4), ("ad_hoc", 3), ("other_signed", 2)):
             result = assess_signature_trust(
-                make_features(signing_status=status, verification="structural")
+                make_features(signing_status=status, verification="unverified")
             )
             assert result["adjustment"] == expected, status
             assert result["credit_withheld"] is False
 
-    def test_structural_signed_with_clickfix_still_penalized(self):
-        """Claiming a signature while behaving like ClickFix is not less alarming."""
+    def test_unverified_signed_with_suspicious_string_still_penalized(self):
+        """Claiming a signature while showing suspicious-string evidence is not less alarming."""
         features = make_features(signing_status="developer_id", notarized=True,
-                                 verification="structural", clickfix=CLICKFIX_HIT)
+                                 verification="unverified", **SUSPICIOUS_HIT)
         result = assess_signature_trust(features)
         assert result["override_applied"] is True
         assert result["trust_level"] == "suspicious_signed"
@@ -200,14 +223,14 @@ class TestVerificationGate:
     def test_notarized_claim_ignored_without_verification(self):
         """Notarization is a Gatekeeper ticket check with no offline answer."""
         features = make_features(signing_status="developer_id", notarized=True,
-                                 verification="structural")
+                                 verification="unverified")
         result = assess_signature_trust(features)
         assert "notarized=True" not in result["summary"]
 
     def test_reason_names_the_verification_level(self):
-        features = make_features(signing_status="apple_signed", verification="structural")
+        features = make_features(signing_status="apple_signed", verification="unverified")
         result = assess_signature_trust(features)
-        assert "structural" in result["summary"]
+        assert "unverified" in result["summary"]
         assert "withheld" in result["summary"]
 
 
@@ -217,7 +240,7 @@ class TestTamperDetectedGate:
     This is what code_signature_verifier reports when page hashes don't
     match the binary's actual bytes (blob transplant), the CMS signature
     doesn't verify, or the certificate chain doesn't reach a pinned root.
-    It is evidence, not silence -- distinct from "structural" (never checked)
+    It is evidence, not silence -- distinct from "unverified" (never checked)
     and worse than "unsigned" (didn't even try to look trustworthy).
     """
 
@@ -235,22 +258,22 @@ class TestTamperDetectedGate:
             make_features(signing_status="apple_signed", verification="invalid")
         )
         unsigned = assess_signature_trust(
-            make_features(signing_status="unsigned", verification="structural")
+            make_features(signing_status="unsigned", verification="unverified")
         )
         assert tampered["adjustment"] > unsigned["adjustment"]
 
-    def test_tamper_gate_fires_regardless_of_clickfix(self):
-        """Tampering is independently alarming -- no ClickFix corroboration needed."""
+    def test_tamper_gate_fires_regardless_of_suspicious_behavior(self):
+        """Tampering is independently alarming -- no behavioral-suspicion corroboration needed."""
         clean = assess_signature_trust(
             make_features(signing_status="developer_id", notarized=True, verification="invalid")
         )
-        with_clickfix = assess_signature_trust(
+        with_suspicious = assess_signature_trust(
             make_features(signing_status="developer_id", notarized=True,
-                         verification="invalid", clickfix=CLICKFIX_HIT)
+                         verification="invalid", **SUSPICIOUS_HIT)
         )
-        assert clean["adjustment"] == with_clickfix["adjustment"] == 5
-        assert "also exhibits ClickFix" in with_clickfix["summary"] or any(
-            "ClickFix" in r for r in with_clickfix["reasons"]
+        assert clean["adjustment"] == with_suspicious["adjustment"] == 5
+        assert "also exhibits run-only AppleScript" in with_suspicious["summary"] or any(
+            "run-only AppleScript" in r for r in with_suspicious["reasons"]
         )
 
     def test_tamper_gate_takes_precedence_over_credit(self):

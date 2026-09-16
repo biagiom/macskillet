@@ -13,9 +13,19 @@ literature synthesis (SentinelOne, Moonlock, Jamf, Objective-See):
 
 This helper assigns the normal signing trust credit (negative = more trusted),
 but REVOKES that credit and applies a penalty when a signed/notarized sample
-also exhibits ClickFix-style delivery, script-editor, or exfiltration behavior.
+also exhibits run-only/compiled AppleScript or a suspicious-string category
+match — behavioral-suspicion evidence that the sample does something a
+legitimately signed app shouldn't, regardless of its signing claim.
 
-It runs AFTER detect_clickfix() so it can read features["clickfix"].
+It runs AFTER obfuscation detection so it can read top-level
+features["applescript_analysis"]["runonly_applescript"], and after binary/string
+analysis so it can read the suspicious-string category matches at top-level
+features["strings_of_interest"] — the same field shape on both pipelines. There
+is no dedicated ClickFix-delivery detector (ClickFix
+itself is a social-engineering technique — a fake support/CAPTCHA page tricking a user
+into pasting and running a command — that happens before a sample is even dropped, not
+something static analysis of the binary observes directly); this gate is sourced from
+those two already-computed detectors instead.
 Weights are provisional and intended for recalibration against a labeled set.
 
 ## Trust requires verification
@@ -41,16 +51,19 @@ signature was *cryptographically verified*. ``features["signature"]`` carries a
     ordinary unsigned binary: something went to the trouble of *looking*
     signed and failed the check, which unsigned malware doesn't bother with.
 
-``"structural"``
-    No verification was possible — dependency missing, no signature present,
-    or (historically, before the offline verifier existed) identity merely
-    read from certificate ASCII without validation. A binary can simply
-    *contain* the bytes "Apple Root CA" or a Developer ID common name and be
-    reported as signed by them under this level, so it earns no credit.
+``"unverified"``
+    No cryptographic determination was reached — several distinct causes, not
+    one: no signature present at all; a signature present but with nothing
+    cryptographic to check (ad-hoc, no CMS blob); a missing dependency; no
+    pinned roots to anchor the chain; or (historically, before the offline
+    verifier existed) identity merely read from certificate ASCII without
+    validation. A binary can simply *contain* the bytes "Apple Root CA" or a
+    Developer ID common name and be reported as signed by them under this
+    level, so it earns no credit regardless of which cause produced it.
 
 Granting negative (trusting) credit on an unverified claim is forgeable with a
 string literal — that is the whole reason this gate exists. Under
-``structural``, trust credit is clamped to zero: penalties still apply, since
+``unverified``, trust credit is clamped to zero: penalties still apply, since
 the *absence* of a signature blob is reliably observable without a trust
 store, while unverified presence proves nothing.
 
@@ -71,9 +84,20 @@ _BASE_CREDIT = {
     "unsigned": 4,
 }
 
-# Behavioral categories (from clickfix detector) that indicate the signed
-# trust should not be honored.
-_SUSPICIOUS_CATEGORIES = {"delivery", "script_editor", "exfil"}
+# Behavioral suspicious-string categories (from common.strings) that indicate
+# the signed trust should not be honored. Deliberately narrow, matching the
+# scope of the prior ClickFix-era {"delivery", "script_editor", "exfil"} set:
+# harvest/anti-analysis/persistence-flavored categories (tcc_abuse,
+# dev_secret_harvest, shell_config_persistence, browser_data, crypto_wallet,
+# keychain_access, anti_vm, cloud_hosting_abuse) stay informational only and
+# do not revoke trust on their own.
+_SUSPICIOUS_CATEGORIES = {
+    "gatekeeper_bypass",
+    "automation",
+    "download_execute",
+    "cloud_c2_exfil",
+    "malware_family_marker",
+}
 
 # Penalty applied when a signed/notarized sample behaves maliciously.
 _OVERRIDE_PENALTY = 3
@@ -112,18 +136,48 @@ def _base_credit_for(signing_status: str, notarized: bool) -> int:
     return _BASE_CREDIT.get(signing_status, 0)
 
 
-def _has_suspicious_behavior(clickfix: dict) -> bool:
-    if clickfix.get("clickfix_suspected"):
+def _findings_are_suspicious(findings: list) -> bool:
+    return any(f.get("category") in _SUSPICIOUS_CATEGORIES for f in findings)
+
+
+def _has_suspicious_behavior(features: dict) -> bool:
+    """True if obfuscation, suspicious-string, or deep-scan analysis found
+    run-only AppleScript or a suspicious-string category match — in the main
+    binary or in any embedded item a --deep scan inspected.
+
+    Checks top-level features["applescript_analysis"]["runonly_applescript"],
+    the same path on both pipelines (the applescript_analysis wrapper key is
+    deliberately named differently from its own inner runonly_applescript
+    boolean, so the two can't be confused or truth-tested interchangeably).
+    Also checks the suspicious-string findings at the top-level
+    features["strings_of_interest"] (both pipelines populate this same
+    field from the same category taxonomy, so this half works identically on
+    either pipeline), and every features["deep_scan"]["scanned"] entry (an
+    embedded AppleScript file or Mach-O binary a --deep scan inspected) for
+    the same two signals. A malicious payload stashed outside the main
+    executable must not be invisible to this gate merely because it isn't
+    the main binary.
+    """
+    if (features.get("applescript_analysis") or {}).get("runonly_applescript"):
         return True
-    for ind in clickfix.get("matched_indicators", []):
-        if ind.get("category") in _SUSPICIOUS_CATEGORIES:
+
+    findings = features.get("strings_of_interest") or []
+    if _findings_are_suspicious(findings):
+        return True
+
+    deep_scan = features.get("deep_scan") or {}
+    for entry in deep_scan.get("scanned", []):
+        analysis = entry.get("analysis") or {}
+        if (analysis.get("applescript_analysis") or {}).get("runonly_applescript"):
             return True
+        if _findings_are_suspicious(analysis.get("strings_of_interest") or []):
+            return True
+
     return False
 
 
 def assess_signature_trust(features: dict) -> dict:
     sig = features.get("signature") or {}
-    clickfix = features.get("clickfix") or {}
 
     signing_status = sig.get("signing_status", "unsigned")
     verified = _is_verified(sig)
@@ -131,8 +185,8 @@ def assess_signature_trust(features: dict) -> dict:
     verification = sig.get("verification") or "unknown"
 
     # Notarization is a Gatekeeper ticket check with no offline answer, so a
-    # claim of it under structural parsing is not evidence. Kept only for
-    # labelling; the credit gate below is what actually withholds trust.
+    # claim of it under an unverified signature is not evidence. Kept only
+    # for labelling; the credit gate below is what actually withholds trust.
     claimed_notarized = bool(sig.get("notarized"))
     notarized = claimed_notarized and verified
 
@@ -152,7 +206,7 @@ def assess_signature_trust(features: dict) -> dict:
     # is not "we don't know" — it's evidence someone tried to forge trust and
     # failed (a page hash that doesn't match this binary, a CMS signature
     # that doesn't verify, a chain that doesn't reach a pinned root). This
-    # fires independently of ClickFix corroboration and short-circuits the
+    # fires independently of behavioral-suspicion corroboration and short-circuits the
     # rest of the assessment — nothing below this outweighs caught tampering.
     if tamper_detected:
         credit_withheld = True
@@ -164,8 +218,8 @@ def assess_signature_trust(features: dict) -> dict:
             f"verification — treated as tamper evidence, penalty {adjustment:+d} applied "
             f"(worse than unsigned: this tried to look trustworthy and failed the check)"
         )
-        if _has_suspicious_behavior(clickfix):
-            reasons.append("also exhibits ClickFix-style delivery/exfil behavior")
+        if _has_suspicious_behavior(features):
+            reasons.append("also exhibits run-only AppleScript or suspicious-string evidence")
         return {
             "trust_level": trust_level,
             "base_credit": base_credit,
@@ -191,20 +245,21 @@ def assess_signature_trust(features: dict) -> dict:
         )
 
     earns_credit = base_credit < 0
-    suspicious = _has_suspicious_behavior(clickfix)
+    suspicious = _has_suspicious_behavior(features)
 
-    # Gate 2: a sample that presents as signed and behaves like ClickFix gets a
-    # penalty. This fires whether the signature was verified or merely claimed —
-    # the MacSync / Odyssey pattern is exactly "looks signed, acts malicious",
-    # and a forged claim is not less alarming than a real certificate.
+    # Gate 2: a sample that presents as signed but has run-only AppleScript or
+    # a suspicious-string category match gets a penalty. This fires whether
+    # the signature was verified or merely claimed — the MacSync / Odyssey
+    # pattern is exactly "looks signed, acts malicious", and a forged claim is
+    # not less alarming than a real certificate.
     if suspicious and (earns_credit or credit_withheld):
         override_applied = True
         adjustment = _OVERRIDE_PENALTY
         trust_level = "suspicious_signed"
         label = "notarized" if notarized else signing_status
         reasons.append(
-            f"{label} sample exhibits ClickFix-style delivery/exfil behavior — "
-            f"signing trust credit revoked (was {claimed_credit:+d}), "
+            f"{label} sample exhibits run-only AppleScript or suspicious-string "
+            f"evidence — signing trust credit revoked (was {claimed_credit:+d}), "
             f"penalty {adjustment:+d} applied"
         )
     else:

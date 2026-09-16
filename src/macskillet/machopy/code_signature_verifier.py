@@ -300,12 +300,17 @@ def _verify_special_slot(cd: CodeDirectory, slot_number: int, blob: bytes) -> bo
 # Links 2 & 3: CodeDirectory hash -> CMS signature
 # ---------------------------------------------------------------------------
 
-def _verify_cms(cs: bytes, sig_offset: int, code_directories: list[CodeDirectory]) -> dict:
+def _verify_cms(cs: bytes, sig_offset: int, code_directories: list[CodeDirectory],
+                pinned_roots: list) -> dict:
     result = {
         "present": False, "signature_valid": False, "cd_hash_matches": False,
         "signing_time": None, "signer_subject": None,
         "signer_common_name": None, "signer_team_id": None,
         "certificates": [],
+        # RFC 3161 timestamp-token verification, when present — see
+        # _verify_timestamp_token for why a verified token's genTime is
+        # preferred over the self-declared signing_time above.
+        "timestamp": {"present": False, "valid": False, "gen_time": None, "errors": []},
         # Verification could not be attempted (missing dependency, etc.) —
         # never evidence of tampering.
         "environment_errors": [],
@@ -407,6 +412,163 @@ def _verify_cms(cs: bytes, sig_offset: int, code_directories: list[CodeDirectory
     except Exception as exc:
         result["errors"].append(f"CMS signature verification error: {exc}")
 
+    result["timestamp"] = _verify_timestamp_token(si, signature, pinned_roots)
+    if result["timestamp"]["present"] and not result["timestamp"]["valid"]:
+        # A present-but-broken token doesn't vouch for this signature — real
+        # evidence, not an absence. Folded into the same `errors` list the
+        # outer CMS checks use so the existing tamper-detection branch in
+        # _verify_slice (`if cms["errors"]: tamper_detected = True`) already
+        # covers it without a second flagging path.
+        result["errors"].extend(
+            f"timestamp token: {e}" for e in result["timestamp"]["errors"]
+        )
+
+    return result
+
+
+def _select_reference_time(cms: dict):
+    """Pick the expiry-check reference time from a ``_verify_cms`` result.
+
+    A verified timestamp token's ``genTime`` is a trusted third-party
+    attestation, immune to a forged self-declared ``signing_time`` — prefer
+    it whenever the token verified. A present-but-invalid token already sets
+    ``tamper_detected`` via ``cms["errors"]``, so falling back to
+    ``signing_time`` here in that case is harmless — the tamper flag is what
+    actually matters for that outcome, not which time this function returns.
+    """
+    timestamp = cms["timestamp"]
+    return timestamp["gen_time"] if timestamp["valid"] else cms.get("signing_time")
+
+
+def _verify_timestamp_token(si, outer_signature: bytes, pinned_roots: list) -> dict:
+    """Verify an RFC 3161 timestamp token attached to ``si``, if any.
+
+    A verified token's ``genTime`` is a trusted third-party attestation of
+    when this exact signature was made, immune to a self-declared signing_time
+    lie: ``messageImprint`` binds to the *outer signature bytes themselves*,
+    so forging signing_time changes signed_attrs, which forces a new
+    signature value that no previously-issued token can match. See
+    specs/macskillet-signature-verification's timestamp-token requirement.
+
+    Returns ``{"present", "valid", "gen_time", "errors"}``. ``present=False``
+    (no errors) means the signer simply didn't request a timestamp — common
+    and not itself evidence of anything.
+    """
+    result = {"present": False, "valid": False, "gen_time": None, "errors": []}
+
+    unsigned_attrs = si["unsigned_attrs"]
+    if not unsigned_attrs.native:
+        return result
+
+    token_der = None
+    for attr in unsigned_attrs:
+        if attr["type"].native == "signature_time_stamp_token":
+            token_der = attr["values"][0].dump()
+            break
+    if token_der is None:
+        return result
+
+    result["present"] = True
+
+    try:
+        from asn1crypto import tsp
+        from asn1crypto.cms import CMSAttributes, ContentInfo
+    except ImportError:
+        result["errors"].append("asn1crypto not installed — cannot parse timestamp token")
+        return result
+
+    try:
+        token_ci = ContentInfo.load(token_der)
+        token_sd = token_ci["content"]
+        econtent = token_sd["encap_content_info"]
+        tst_info = tsp.TSTInfo.load(econtent["content"].parsed.dump())
+        token_signer_infos = token_sd["signer_infos"]
+        token_certs_asn1 = [c.chosen for c in token_sd["certificates"]]
+    except Exception as exc:
+        result["errors"].append(f"timestamp token parse failed: {exc}")
+        return result
+
+    if not token_signer_infos or not token_certs_asn1:
+        result["errors"].append("timestamp token has no signer or no certificates")
+        return result
+
+    # Does the token's messageImprint actually cover *this* signature?
+    mi = tst_info["message_imprint"]
+    hash_algo_name = mi["hash_algorithm"]["algorithm"].native
+    if hash_algo_name not in hashlib.algorithms_available:
+        result["errors"].append(f"unsupported timestamp hash algorithm {hash_algo_name}")
+        return result
+    computed_imprint = hashlib.new(hash_algo_name, outer_signature).digest()
+    if computed_imprint != mi["hashed_message"].native:
+        result["errors"].append(
+            "messageImprint does not match the outer signature — token does not "
+            "vouch for this signature"
+        )
+        return result
+
+    from cryptography import x509
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives import hashes
+
+    token_certs = [x509.load_der_x509_certificate(c.dump()) for c in token_certs_asn1]
+
+    tsi = token_signer_infos[0]
+    digest_algo_name = tsi["digest_algorithm"]["algorithm"].native
+    hash_algo = {
+        "sha1": hashes.SHA1(), "sha256": hashes.SHA256(),
+        "sha384": hashes.SHA384(), "sha512": hashes.SHA512(),
+    }.get(digest_algo_name)
+    if hash_algo is None:
+        result["errors"].append(f"unsupported timestamp CMS digest algorithm {digest_algo_name}")
+        return result
+
+    signed_attrs = tsi["signed_attrs"]
+    tst_message_digest = None
+    for attr in signed_attrs:
+        if attr["type"].native == "message_digest":
+            tst_message_digest = attr["values"].native[0]
+    if tst_message_digest is None:
+        result["errors"].append("timestamp token CMS has no message_digest attribute")
+        return result
+
+    encap_content_bytes = econtent["content"].parsed.dump()
+    if hashlib.new(digest_algo_name, encap_content_bytes).digest() != tst_message_digest:
+        result["errors"].append("timestamp token's message_digest does not match its TSTInfo content")
+        return result
+
+    # Same RFC 5652 §5.4 explicit re-encoding _verify_cms already relies on.
+    attrs_out = CMSAttributes()
+    for attr in signed_attrs:
+        attrs_out.append(attr)
+    signed_attrs_der = attrs_out.dump()
+
+    signer_cert = _find_signer_cert(tsi, token_certs, token_certs_asn1)
+    if signer_cert is None:
+        result["errors"].append("could not identify timestamp token's signer certificate")
+        return result
+
+    tst_signature = tsi["signature"].native
+    try:
+        _verify_signature(signer_cert.public_key(), tst_signature, signed_attrs_der, hash_algo)
+    except InvalidSignature:
+        result["errors"].append("timestamp token's CMS signature does not verify")
+        return result
+    except Exception as exc:
+        result["errors"].append(f"timestamp token signature verification error: {exc}")
+        return result
+
+    ordered_certs = [signer_cert] + [c for c in token_certs if c is not signer_cert]
+    # No reference_time: this module deliberately doesn't check the TSA
+    # certificate's own expiry window (see design.md's non-goals) — only that
+    # it chains to a pinned root.
+    chain = _verify_chain(ordered_certs, pinned_roots)
+    if not chain["valid"]:
+        detail = "; ".join(chain["errors"]) or "chain did not resolve to a pinned root"
+        result["errors"].append(f"certificate chain invalid: {detail}")
+        return result
+
+    result["valid"] = True
+    result["gen_time"] = tst_info["gen_time"].native
     return result
 
 
@@ -745,20 +907,24 @@ def _verify_slice(fh: BinaryIO, slice_offset: int, cs: bytes, pinned_roots: list
     if sig_off is None:
         result["notes"].append("ad-hoc signature: no CMS blob present")
         return result
-    cms = _verify_cms(cs, sig_off, code_directories)
+    cms = _verify_cms(cs, sig_off, code_directories, pinned_roots)
     result["cms"] = {k: v for k, v in cms.items() if k != "certificates"}
     if cms["environment_errors"]:
         result["notes"].extend(cms["environment_errors"])
     if cms["errors"]:
         # A check was attempted and failed — real evidence, not an
         # environment limitation. Distinguished from environment_errors so a
-        # missing dependency can never masquerade as tamper evidence.
+        # missing dependency can never masquerade as tamper evidence. This
+        # also covers a present-but-broken timestamp token (folded into
+        # cms["errors"] by _verify_cms) — no separate tamper-flagging path.
         result["tamper_detected"] = True
+
+    reference_time = _select_reference_time(cms)
 
     # Link 4.
     if cms["certificates"]:
         chain = _verify_chain(cms["certificates"], pinned_roots,
-                              reference_time=cms.get("signing_time"),
+                              reference_time=reference_time,
                               check_revocation=check_revocation)
         result["chain"] = chain
         if chain["environment_errors"]:

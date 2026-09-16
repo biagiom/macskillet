@@ -3,7 +3,7 @@ macho_analyzer.py — LIEF-based Mach-O static analysis.
 
 Direct binary parsing via LIEF.
 Produces an arch-keyed dict consumed by the agent tool layer
-(src/macskillet/portable/tool_dispatcher.py).
+(src/macskillet/portable/tools.py).
 """
 
 import collections
@@ -105,6 +105,25 @@ def _get_segments(binary: lief.MachO.Binary) -> list:
     return segments
 
 
+def _get_obfuscation_data(binary: lief.MachO.Binary) -> dict:
+    """Gather the raw data ``common/obfuscation_signals.py``'s scoring
+    functions need, that isn't already covered by ``_get_segments()``:
+    symbol counts, section names, a raw-symbol-name sample (for Swift
+    detection), and LC_ENCRYPTION_INFO presence."""
+    section_names = [
+        section.name for segment in binary.segments for section in segment.sections
+    ]
+    symbol_names = [sym.name for sym in binary.symbols]
+    return {
+        "import_count": len(binary.imported_symbols),
+        "export_count": len(binary.exported_symbols),
+        "total_symbol_count": len(symbol_names),
+        "section_names": section_names,
+        "symbol_names_sample": symbol_names[:200],
+        "has_encryption": binary.encryption_info is not None,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -114,7 +133,7 @@ def analyze_macho(binary_path: str) -> dict:
     Parse a Mach-O binary (or FAT universal) with LIEF.
 
     Returns an arch-keyed dict whose structure matches what
-    src/macskillet/portable/tool_dispatcher.py expects.
+    src/macskillet/portable/tools.py expects.
 
     Schema per arch key:
         {
@@ -122,6 +141,10 @@ def analyze_macho(binary_path: str) -> dict:
             "segments":  [{"segment_name": str, "filesize": int, "entropy": float}],
             "dylibs":    ["/path/to/lib.dylib", ...],
             "signature": {"entitlements_info": {"entitlements": {}}},
+            "import_count": int, "export_count": int, "total_symbol_count": int,
+            "section_names": [str, ...],
+            "symbol_names_sample": [str, ...],
+            "has_encryption": bool,
         }
     """
     try:
@@ -140,5 +163,6 @@ def analyze_macho(binary_path: str) -> dict:
             "segments": _get_segments(binary),
             "dylibs": [lib.name for lib in binary.libraries],
             "signature": {"entitlements_info": {"entitlements": {}}},
+            **_get_obfuscation_data(binary),
         }
     return result

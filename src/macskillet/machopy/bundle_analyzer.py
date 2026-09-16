@@ -33,7 +33,7 @@ _INTERESTING_KEY_MARKERS = (
 #: Extensions treated as embedded scripts. A script inside a signed .app is a
 #: common way to keep malicious logic out of the notarized Mach-O.
 _SCRIPT_EXTENSIONS = (
-    ".sh", ".py", ".rb", ".pl", ".js", ".scpt", ".applescript", ".command",
+    ".sh", ".py", ".rb", ".pl", ".js", ".bash", ".scpt", ".applescript", ".command",
 )
 
 #: Directories inside a bundle that imply a persistence mechanism.
@@ -98,7 +98,15 @@ def analyze_bundle(app_path: str) -> dict:
     )
 
     seen = 0
-    for dirpath, _dirnames, filenames in os.walk(app_path, followlinks=False):
+    for dirpath, dirnames, filenames in os.walk(app_path, followlinks=False):
+        # .scptd script bundles are directories (Contents/Resources/Scripts/main.scpt
+        # inside), not plain files — record the bundle path itself and prune it from
+        # further traversal so its inner main.scpt isn't also picked up as a bare
+        # .scpt file below (same in-place os.walk pruning trick used for .app bundles).
+        for dirname in list(dirnames):
+            if dirname.lower().endswith(".scptd"):
+                result["embedded_scripts"].append(os.path.join(dirpath, dirname))
+                dirnames.remove(dirname)
         for filename in filenames:
             seen += 1
             if seen > _MAX_FILES:

@@ -25,10 +25,13 @@ from macskillet.machopy.code_signature_verifier import (
     CSSLOT_CODEDIRECTORY,
     CSSLOT_ENTITLEMENTS,
     CSSLOT_SIGNATURESLOT,
+    _blob_at,
     _parse_code_directory,
     _parse_superblob,
+    _select_reference_time,
     _verify_chain,
     _verify_slice,
+    _verify_timestamp_token,
     load_pinned_roots,
     verify_code_signature,
 )
@@ -150,6 +153,11 @@ class TestHashSlotRecomputation:
             result = _verify_slice(fh, 0, sb, pinned_roots=[])
         assert result["page_hashes_valid"] is True
         assert result["tamper_detected"] is False
+        # No CSSLOT_SIGNATURESLOT was included -- this is an ad-hoc-shaped
+        # signature (CodeDirectory present and internally consistent, but
+        # nothing cryptographic to check), so it's unverified, not verified.
+        assert result["fully_verified"] is False
+        assert "ad-hoc signature: no CMS blob present" in result["notes"]
 
     def test_tampered_page_fails(self, tmp_path):
         page_size_log = 12
@@ -188,6 +196,82 @@ class TestHashSlotRecomputation:
         assert result["signed"] is False
         assert result["fully_verified"] is False
         assert result["tamper_detected"] is False  # absence isn't evidence
+
+
+# ---------------------------------------------------------------------------
+# "unverified" outcomes -- distinct causes, none of them tamper evidence
+# ---------------------------------------------------------------------------
+
+class TestUnverifiedOutcomes:
+    """`verification == "unverified"` has several independent causes. Each
+    must be reachable and none may ever set `tamper_detected`.
+    """
+
+    def test_missing_asn1crypto_is_environment_error_not_tamper(self, tmp_path, monkeypatch):
+        import sys
+
+        page_size_log = 12
+        page_size = 1 << page_size_log
+        pages = [bytes([i]) * page_size for i in range(2)]
+        hashes = [hashlib.sha256(p).digest() for p in pages]
+        cd_bytes = _build_code_directory(n_code_slots=2, page_size_log=page_size_log,
+                                         page_hashes=hashes)
+        # A present-but-unparseable-without-the-dependency CMS blob: header
+        # (magic, length) plus arbitrary payload -- _verify_cms fails the
+        # import before it ever looks at the payload bytes.
+        sig_blob = struct.pack(">II", 0xFADE0B01, 12) + b"\x00\x00\x00\x00"
+        sb = _build_superblob({
+            CSSLOT_CODEDIRECTORY: cd_bytes,
+            CSSLOT_SIGNATURESLOT: sig_blob,
+        })
+
+        binary_path = tmp_path / "sample"
+        binary_path.write_bytes(b"".join(pages))
+
+        monkeypatch.setitem(sys.modules, "asn1crypto.cms", None)
+        with open(binary_path, "rb") as fh:
+            result = _verify_slice(fh, 0, sb, pinned_roots=[])
+
+        assert result["tamper_detected"] is False
+        assert result["fully_verified"] is False
+        assert any("asn1crypto not installed" in n for n in result["notes"])
+
+    def test_empty_pinned_roots_end_to_end_via_verify_code_signature(self):
+        """Unit-level coverage of `_verify_chain` alone (see TestForgedRootRejection)
+        doesn't prove the full pipeline reaches "unverified" for this cause --
+        confirm it here through the public `verify_code_signature` entry point."""
+        result = verify_code_signature(REAL_SIGNED_BINARY, pinned_roots=[])
+        assert result["fully_verified"] is False
+        assert result["tamper_detected"] is False
+        for slice_result in result["slices"].values():
+            assert slice_result["chain"]["environment_errors"]
+            assert slice_result["chain"]["errors"] == []
+
+    def test_lief_not_installed_reports_unverified(self, monkeypatch):
+        import builtins
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "lief":
+                raise ImportError("simulated: LIEF not installed")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+
+        from macskillet.machopy.signature_analyzer import _analyze_with_lief
+        result = _analyze_with_lief(REAL_SIGNED_BINARY)
+        assert result["verification"] == "unverified"
+        assert "LIEF not installed" in result["codesign_verify_output"]
+
+    def test_lief_parse_failure_reports_unverified(self, tmp_path):
+        from macskillet.machopy.signature_analyzer import _analyze_with_lief
+
+        garbage = tmp_path / "not_a_macho"
+        garbage.write_bytes(b"this is not a Mach-O binary" * 10)
+        result = _analyze_with_lief(str(garbage))
+        assert result["verification"] == "unverified"
+        assert result["signed"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -373,7 +457,7 @@ class TestRealBinaries:
 class TestCodesignPathDistinguishesTamperFromAbsence:
     """codesign --verify failing means either "never signed" or "signed but
     broken" -- two very different things that both signature_analyzer.py
-    (machopy, used by the portable pipeline) and extract_features_native.py
+    (machopy, used by the portable pipeline) and feature_extractor.py
     (native pipeline) must not conflate, or signature_trust's tamper gate can
     never fire on the platform where codesign is authoritative.
     """
@@ -389,7 +473,7 @@ class TestCodesignPathDistinguishesTamperFromAbsence:
         target.write_bytes(data)
         return str(target)
 
-    def test_never_signed_reports_structural_unsigned(self, tmp_path):
+    def test_never_signed_reports_cryptographic_not_invalid(self, tmp_path):
         from macskillet.machopy.signature_analyzer import _analyze_with_codesign
 
         unsigned = tmp_path / "plain"
@@ -402,7 +486,11 @@ class TestCodesignPathDistinguishesTamperFromAbsence:
 
         result = _analyze_with_codesign(str(unsigned))
         assert result["signing_status"] == "unsigned"
-        assert result["verification"] != "invalid"
+        # Not "unverified": codesign gave an authoritative, unambiguous answer
+        # (confirmed absence), so this path never produces "unverified" at
+        # all -- that outcome is exclusive to the offline/LIEF path, where no
+        # authoritative tool is available to make the call.
+        assert result["verification"] == "cryptographic"
 
     def test_tampered_reports_invalid_not_unsigned(self, tmp_path):
         from macskillet.machopy.signature_analyzer import _analyze_with_codesign
@@ -412,7 +500,7 @@ class TestCodesignPathDistinguishesTamperFromAbsence:
         assert result["signing_status"] != "unsigned"  # identity still readable
 
     def test_native_extractor_matches(self, tmp_path):
-        from macskillet.native.extract_features_native import analyze_signature
+        from macskillet.native.feature_extractor import analyze_signature
 
         result = analyze_signature(self._make_tampered_copy(tmp_path))
         assert result["verification"] == "invalid"
@@ -424,7 +512,7 @@ class TestCodesignPathDistinguishesTamperFromAbsence:
         from macskillet.common.signature_trust import assess_signature_trust
 
         sig = _analyze_with_codesign(self._make_tampered_copy(tmp_path))
-        result = assess_signature_trust({"signature": sig, "clickfix": {}})
+        result = assess_signature_trust({"signature": sig})
         assert result["trust_level"] == "signature_invalid"
         assert result["adjustment"] == 5
 
@@ -519,6 +607,175 @@ class TestExpiryAndSelfSigned:
         result = _verify_chain([developer_id_ca], [apple_root], reference_time=long_after)
         assert result["expired"] is True
         assert result["valid"] is False
+
+
+def _find_timestamped_app_binary() -> str | None:
+    """First installed Developer-ID app binary carrying a codesign --timestamp token."""
+    candidates = [
+        "/Applications/Claude.app/Contents/MacOS/Claude",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Firefox.app/Contents/MacOS/firefox",
+        "/Applications/Slack.app/Contents/MacOS/Slack",
+        "/Applications/Docker.app/Contents/MacOS/Docker",
+        "/Applications/Microsoft Word.app/Contents/MacOS/Microsoft Word",
+    ]
+    for path in candidates:
+        if Path(path).exists():
+            return path
+    return None
+
+
+def _extract_signer_info(binary_path: str):
+    """(si, outer_signature_bytes) for the primary signed slice's CMS SignerInfo."""
+    import lief
+    from asn1crypto.cms import ContentInfo
+
+    lief.logging.disable()
+    fat = lief.MachO.parse(binary_path)
+    for binary in fat:
+        if not getattr(binary, "has_code_signature", False) or binary.code_signature is None:
+            continue
+        cs = bytes(binary.code_signature.content)
+        entries = _parse_superblob(cs)
+        sig_off = entries.get(CSSLOT_SIGNATURESLOT)
+        if sig_off is None:
+            continue
+        blob = _blob_at(cs, sig_off)
+        cms_der = blob[8:]
+        ci = ContentInfo.load(cms_der)
+        si = ci["content"]["signer_infos"][0]
+        return si, si["signature"].native
+    return None, None
+
+
+@pytest.mark.integration
+class TestTimestampTokenVerification:
+    """RFC 3161 timestamp-token verification -- defeats a forged signing_time.
+
+    Uses a real --timestamp-signed Developer ID binary already installed on
+    the host, since a valid TSA countersignature can't be synthesized without
+    owning a TSA key (see design.md's fixture-strategy rationale).
+    """
+
+    def _si_and_signature(self):
+        binary_path = _find_timestamped_app_binary()
+        if binary_path is None:
+            pytest.skip("no installed --timestamp-signed app found on this machine")
+        si, signature = _extract_signer_info(binary_path)
+        if si is None or not si["unsigned_attrs"].native:
+            pytest.skip(f"{binary_path} has no timestamp token to test against")
+        return si, signature
+
+    def test_valid_timestamp_token_verifies(self):
+        si, signature = self._si_and_signature()
+        roots = load_pinned_roots()
+
+        result = _verify_timestamp_token(si, signature, roots)
+
+        assert result["present"] is True
+        assert result["valid"] is True
+        assert result["errors"] == []
+        assert result["gen_time"] is not None
+
+    def test_no_timestamp_token_is_not_tamper_evidence(self):
+        """A SignerInfo with no unsigned_attrs at all -- e.g. an older or
+        ad-hoc signature -- must report present=False, not an error."""
+        class _NoUnsignedAttrs:
+            def __getitem__(self, key):
+                if key == "unsigned_attrs":
+                    return self
+
+                raise KeyError(key)
+
+            @property
+            def native(self):
+                return None
+
+        result = _verify_timestamp_token(_NoUnsignedAttrs(), b"irrelevant", [])
+        assert result == {"present": False, "valid": False, "gen_time": None, "errors": []}
+
+    def test_corrupted_message_imprint_is_invalid(self):
+        """A signature value that doesn't match the token's messageImprint --
+        equivalent to a token copied from a different, unrelated signature."""
+        si, signature = self._si_and_signature()
+        roots = load_pinned_roots()
+        corrupted_signature = bytes([signature[0] ^ 0xFF]) + signature[1:]
+
+        result = _verify_timestamp_token(si, corrupted_signature, roots)
+
+        assert result["present"] is True
+        assert result["valid"] is False
+        assert result["errors"]
+        assert "messageImprint" in result["errors"][0]
+
+    def test_chain_not_reaching_pinned_root_is_invalid(self):
+        """No pinned roots available -- the token's chain can't be verified,
+        same environment-limitation shape _verify_chain already handles."""
+        si, signature = self._si_and_signature()
+
+        result = _verify_timestamp_token(si, signature, [])
+
+        assert result["present"] is True
+        assert result["valid"] is False
+        assert result["errors"]
+
+    def test_verify_code_signature_uses_timestamp_gen_time_as_reference(self):
+        """End-to-end: a real timestamped app's genTime, not the self-declared
+        signing_time, is what the expiry check actually sees."""
+        binary_path = _find_timestamped_app_binary()
+        if binary_path is None:
+            pytest.skip("no installed --timestamp-signed app found on this machine")
+
+        result = verify_code_signature(binary_path)
+        checked_any = False
+        for slice_result in result["slices"].values():
+            ts = slice_result["cms"]["timestamp"]
+            if not ts["present"]:
+                continue
+            checked_any = True
+            assert ts["valid"] is True
+            assert slice_result["chain"]["valid"] is True
+            assert slice_result["fully_verified"] is True
+        if not checked_any:
+            pytest.skip(f"{binary_path} has no timestamp token to test against")
+
+
+class TestReferenceTimeSelection:
+    """gen_time from a verified timestamp token wins over self-declared signing_time."""
+
+    def test_valid_timestamp_preferred_over_signing_time(self):
+        import datetime
+
+        gen_time = datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc)
+        signing_time = datetime.datetime(2099, 1, 1, tzinfo=datetime.timezone.utc)
+        cms = {
+            "signing_time": signing_time,
+            "timestamp": {"present": True, "valid": True, "gen_time": gen_time, "errors": []},
+        }
+        assert _select_reference_time(cms) == gen_time
+
+    def test_invalid_timestamp_falls_back_to_signing_time(self):
+        import datetime
+
+        signing_time = datetime.datetime(2022, 6, 1, tzinfo=datetime.timezone.utc)
+        cms = {
+            "signing_time": signing_time,
+            "timestamp": {"present": True, "valid": False, "gen_time": None,
+                          "errors": ["messageImprint mismatch"]},
+        }
+        assert _select_reference_time(cms) == signing_time
+
+    def test_no_timestamp_falls_back_to_signing_time_unchanged(self):
+        """Regression guard: signatures with no timestamp token behave
+        identically to before this change."""
+        import datetime
+
+        signing_time = datetime.datetime(2021, 3, 1, tzinfo=datetime.timezone.utc)
+        cms = {
+            "signing_time": signing_time,
+            "timestamp": {"present": False, "valid": False, "gen_time": None, "errors": []},
+        }
+        assert _select_reference_time(cms) == signing_time
 
 
 class TestRevocationOptIn:
