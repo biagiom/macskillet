@@ -5,7 +5,7 @@ import os
 from unittest.mock import patch
 
 
-from macskillet.native.extract_features_native import analyze_preflight
+from macskillet.native.feature_extractor import analyze_preflight
 
 
 def _hex_plist(data) -> str:
@@ -15,7 +15,7 @@ def _hex_plist(data) -> str:
 
 
 def _make_run_mock(where_froms_hex: str | None = None):
-    """Return a mock for extract_features_native.run that handles all calls."""
+    """Return a mock for feature_extractor.run that handles all calls."""
     def mock_run(cmd, timeout=30, input_data=None):
         if cmd[0] == "file":
             return ("Mach-O 64-bit executable arm64", "", 0)
@@ -43,14 +43,14 @@ class TestAnalyzePreflightUrls:
         urls = ["https://cdn.example.com/Installer.dmg", "https://cdn.example.com/"]
         hex_data = _hex_plist(urls)
 
-        with patch('macskillet.native.extract_features_native.run', side_effect=_make_run_mock(hex_data)):
+        with patch('macskillet.native.feature_extractor.run', side_effect=_make_run_mock(hex_data)):
             result = analyze_preflight("/fake/binary")
 
         assert result["download_origin_urls"] == urls
 
     def test_no_xattr_returns_empty_list(self):
         """When kMDItemWhereFroms is absent, download_origin_urls is []."""
-        with patch('macskillet.native.extract_features_native.run', side_effect=_make_run_mock(None)):
+        with patch('macskillet.native.feature_extractor.run', side_effect=_make_run_mock(None)):
             result = analyze_preflight("/fake/binary")
 
         assert result["download_origin_urls"] == []
@@ -60,7 +60,7 @@ class TestAnalyzePreflightUrls:
         data = ["https://cdn.example.com/file.dmg", "file:///tmp/something", "ftp://old.server/"]
         hex_data = _hex_plist(data)
 
-        with patch('macskillet.native.extract_features_native.run', side_effect=_make_run_mock(hex_data)):
+        with patch('macskillet.native.feature_extractor.run', side_effect=_make_run_mock(hex_data)):
             result = analyze_preflight("/fake/binary")
 
         assert result["download_origin_urls"] == ["https://cdn.example.com/file.dmg"]
@@ -85,7 +85,7 @@ class TestAnalyzePreflightUrls:
                 return ("(null)", "", 0)
             return ("", "", 0)
 
-        with patch('macskillet.native.extract_features_native.run', side_effect=mock_run_plutil_fails):
+        with patch('macskillet.native.feature_extractor.run', side_effect=mock_run_plutil_fails):
             result = analyze_preflight("/fake/binary")
 
         assert result["download_origin_urls"] == []

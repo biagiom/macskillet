@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tool_dispatcher.py — Tool implementations for the macOS App Classifier agent.
+tools.py — Tool implementations for the macOS App Classifier agent.
 
 These tools are called by the agent during its reasoning loop.
 Each tool accepts a features dict (from feature_extractor.py) and a query argument,
@@ -10,6 +10,9 @@ and returns a structured result the agent can reason about.
 import json
 import re
 from typing import Any
+
+from macskillet.common.obfuscation_signals import score_segment_entropy
+from macskillet.common.tool_risk_tables import ENTITLEMENT_RISK_DB, SUSPICIOUS_DYLIB_PATTERNS
 
 
 # ---------------------------------------------------------------------------
@@ -36,7 +39,7 @@ TOOLS = [
         }
     },
     {
-        "name": "search_strings",
+        "name": "get_strings",
         "description": (
             "Search the extracted strings of interest for a pattern. "
             "Returns all matching strings with their category and risk level."
@@ -87,6 +90,31 @@ TOOLS = [
         }
     },
     {
+        "name": "get_dylibs",
+        "description": (
+            "Get all linked dynamic libraries with a per-path risk assessment "
+            "(staging paths, hijack-prone relative paths, hooking/injection-suggestive names)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "get_entitlements",
+        "description": (
+            "Get the full entitlements dict with a substring-matched risk assessment. "
+            "Returns risk_flags, sandboxed status, and whether any private Apple "
+            "entitlements are present."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
         "name": "get_all_imports",
         "description": (
             "Get all imported symbols grouped by library. "
@@ -120,8 +148,8 @@ TOOLS = [
     {
         "name": "get_segment_entropy",
         "description": (
-            "Get entropy values for all Mach-O segments. "
-            "High entropy (>7.0 for __TEXT) suggests packing or obfuscation."
+            "Get entropy values for all Mach-O segments, classified against a "
+            "per-segment-type threshold table. High-entropy segments suggest packing."
         ),
         "input_schema": {
             "type": "object",
@@ -171,21 +199,6 @@ API_RISK_DB = {
     "chroot": ("HIGH", "Change root filesystem — almost never in apps"),
 }
 
-ENTITLEMENT_RISK_DB = {
-    "com.apple.security.app-sandbox": ("LOW", "Sandboxed — constrained environment, reduces risk"),
-    "get-task-allow": ("HIGH", "Debug entitlement — should NOT be in release apps"),
-    "com.apple.system-task-ports": ("CRITICAL", "Can access all process task ports"),
-    "com.apple.security.cs.disable-library-validation": ("MEDIUM", "Can load arbitrary dylibs"),
-    "com.apple.security.cs.allow-unsigned-executable-memory": ("MEDIUM", "Allows JIT/injection"),
-    "com.apple.security.automation.apple-events": ("LOW", "Can send Apple Events to other apps"),
-    "com.apple.security.network.client": ("LOW", "Outbound network access"),
-    "com.apple.security.network.server": ("MEDIUM", "Can listen for incoming connections"),
-    "com.apple.security.files.all": ("HIGH", "Access all files on system"),
-    "com.apple.security.personal-information.contacts": ("MEDIUM", "Read contacts"),
-    "com.apple.security.personal-information.location": ("MEDIUM", "Location access"),
-}
-
-
 # ---------------------------------------------------------------------------
 # Tool implementations
 # ---------------------------------------------------------------------------
@@ -227,7 +240,7 @@ def tool_get_feature(features: dict, feature_path: str) -> dict:
     return {"found": True, "path": feature_path, "value": value}
 
 
-def tool_search_strings(features: dict, pattern: str) -> dict:
+def tool_get_strings(features: dict, pattern: str) -> dict:
     strings = features.get("strings_of_interest", [])
     matches = []
     try:
@@ -259,17 +272,21 @@ def tool_lookup_api_risk(features: dict, symbol: str) -> dict:
     }
 
 
-def tool_check_entitlement(features: dict, key: str) -> dict:
-    # Check entitlements in machopy output or signature entitlements XML
-    macho = features.get("macho", {})
+def _collect_all_entitlements(macho: dict) -> dict:
     all_entitlements = {}
-
     for arch, data in macho.items():
         if not isinstance(data, dict):
             continue
         ent = data.get("signature", {}).get("entitlements_info", {}).get("entitlements", {})
         if isinstance(ent, dict):
             all_entitlements.update(ent)
+    return all_entitlements
+
+
+def tool_check_entitlement(features: dict, key: str) -> dict:
+    # Check entitlements in machopy output or signature entitlements XML
+    macho = features.get("macho", {})
+    all_entitlements = _collect_all_entitlements(macho)
 
     # Also check raw entitlements XML from codesign
     ent_xml = features.get("signature", {}).get("entitlements_xml", "")
@@ -291,6 +308,84 @@ def tool_check_entitlement(features: dict, key: str) -> dict:
     }
 
 
+def tool_get_entitlements(features: dict) -> dict:
+    """Bulk entitlement risk assessment — same contract as native's get_entitlements:
+    full entitlements dict, substring-matched risk_flags against the shared
+    ENTITLEMENT_RISK_DB, sandboxed, and has_private_entitlements."""
+    macho = features.get("macho", {})
+    ents = _collect_all_entitlements(macho)
+    if not ents:
+        return {"count": 0, "entitlements": {}, "risk_flags": []}
+
+    risk_flags = []
+    for key, value in ents.items():
+        for risk_key, (risk, note) in ENTITLEMENT_RISK_DB.items():
+            if risk_key in key:
+                risk_flags.append({"key": key, "value": value, "risk": risk, "note": note})
+                break
+        if "com.apple.private" in key:
+            risk_flags.append({
+                "key": key, "value": value, "risk": "HIGH",
+                "note": "Private Apple entitlement not meant for 3rd-party apps"
+            })
+
+    return {
+        "count": len(ents),
+        "entitlements": ents,
+        "risk_flags": risk_flags,
+        "sandboxed": ents.get("com.apple.security.app-sandbox", False),
+        "has_private_entitlements": any("com.apple.private" in k for k in ents),
+    }
+
+
+def _collect_all_dylibs(macho: dict) -> list:
+    dylibs = []
+    seen = set()
+    for arch, data in macho.items():
+        if not isinstance(data, dict):
+            continue
+        for d in data.get("dylibs", []):
+            if d not in seen:
+                seen.add(d)
+                dylibs.append(d)
+    return dylibs
+
+
+def tool_get_dylibs(features: dict) -> dict:
+    """Linked-dylib risk assessment — same contract as native's get_dylibs, against
+    the shared SUSPICIOUS_DYLIB_PATTERNS table."""
+    macho = features.get("macho", {})
+    if not macho:
+        return {"error": "No Mach-O data available"}
+    dylibs = _collect_all_dylibs(macho)
+
+    assessed = []
+    for dylib in dylibs:
+        risk = "LOW"
+        note = "System library"
+        if dylib.startswith("/usr/lib/") or dylib.startswith("/System/"):
+            risk, note = "LOW", "Apple system library"
+        elif dylib.startswith("@executable_path/../Frameworks"):
+            risk, note = "LOW", "Embedded framework (normal)"
+        elif dylib.startswith("@executable_path") or dylib.startswith("@loader_path"):
+            risk, note = "LOW", "Relative path (normal for embedded frameworks)"
+        else:
+            for pattern, r, n in SUSPICIOUS_DYLIB_PATTERNS:
+                if re.search(pattern, dylib, re.IGNORECASE):
+                    risk, note = r, n
+                    break
+            else:
+                risk, note = "MEDIUM", "Non-standard dylib path"
+
+        assessed.append({"path": dylib, "risk": risk, "note": note})
+
+    return {
+        "count": len(dylibs),
+        "dylibs": assessed,
+        "suspicious_count": sum(1 for d in assessed if d["risk"] in ("HIGH", "CRITICAL")),
+    }
+
+
 def tool_get_all_imports(features: dict, arch: str = "all") -> dict:
     macho = features.get("macho", {})
     if not macho:
@@ -304,15 +399,27 @@ def tool_get_all_imports(features: dict, arch: str = "all") -> dict:
 
     # Compute total symbol count
     total = sum(len(v) for v in imports.values() if isinstance(v, list))
-    return {"arch": arch, "total_symbols": total, "by_library": imports}
+    all_symbols = [s for v in imports.values() if isinstance(v, list) for s in v]
+    return {
+        "arch": arch,
+        "total_symbols": total,
+        "by_library": imports,
+        "has_dlopen": any("dlopen" in s for s in all_symbols),
+        "has_dlsym": any("dlsym" in s for s in all_symbols),
+        "has_shell_exec": any(s.lstrip("_") in ("system", "popen") for s in all_symbols),
+    }
 
 
 def tool_check_injection_triad(features: dict) -> dict:
-    """Check for mach_vm_allocate + mach_vm_write + thread_create_running."""
-    triad = {
+    """Check for mach_vm_allocate + mach_vm_write + thread_create_running (the core
+    3-of-3 threshold), plus mach_vm_protect/task_for_pid as informational-only extra
+    signals — same component set and response shape as native's check_injection_triad."""
+    components = {
         "mach_vm_allocate": False,
         "mach_vm_write": False,
+        "mach_vm_protect": False,
         "thread_create_running": False,
+        "task_for_pid": False,
     }
     macho = features.get("macho", {})
     all_imports = _collect_all_imports(macho)
@@ -322,20 +429,30 @@ def tool_check_injection_triad(features: dict) -> dict:
         if isinstance(symbols, list):
             all_symbols.extend(str(s).lower() for s in symbols)
 
-    for key in triad:
-        triad[key] = any(key.lower() in sym for sym in all_symbols)
+    for key in components:
+        components[key] = any(key.lower() in sym for sym in all_symbols)
 
-    present_count = sum(1 for v in triad.values() if v)
+    core_triad_count = sum([
+        components["mach_vm_allocate"],
+        components["mach_vm_write"],
+        components["thread_create_running"],
+    ])
     return {
-        "components": triad,
-        "present_count": present_count,
-        "triad_complete": present_count == 3,
-        "verdict": "CRITICAL — full injection triad detected" if present_count == 3
-                   else f"{present_count}/3 components present — partial injection capability"
+        "components": components,
+        "core_triad_count": f"{core_triad_count}/3",
+        "triad_complete": core_triad_count == 3,
+        "verdict": (
+            "CRITICAL — Complete injection triad detected" if core_triad_count == 3
+            else f"{core_triad_count}/3 core injection components — partial capability"
+        )
     }
 
 
 def tool_get_segment_entropy(features: dict, arch: str = "all") -> dict:
+    """Classifies each segment via the shared common/obfuscation_signals.py scoring
+    core (the same per-segment-type ENTROPY_THRESHOLDS table and packing-ratio logic
+    native's get_segment_entropy reads from features["obfuscation"]["entropy_analysis"]),
+    rather than an independent flat entropy threshold."""
     macho = features.get("macho", {})
     if not macho:
         return {"error": "No Mach-O data available"}
@@ -347,18 +464,23 @@ def tool_get_segment_entropy(features: dict, arch: str = "all") -> dict:
         arch_data = macho.get(a, {})
         if not isinstance(arch_data, dict):
             continue
-        segments = arch_data.get("segments", [])
-        if isinstance(segments, list):
-            results[a] = [
-                {
-                    "name": seg.get("segment_name") or seg.get("name", "?"),
-                    "entropy": seg.get("entropy"),
-                    "size": seg.get("filesize") or seg.get("size"),
-                    "high_entropy": (seg.get("entropy") or 0) > 7.0,
-                }
-                for seg in segments
-                if isinstance(seg, dict)
-            ]
+        raw_segments = arch_data.get("segments", [])
+        if not isinstance(raw_segments, list):
+            continue
+        segments = [
+            {
+                "name": seg.get("segment_name") or seg.get("name", "?"),
+                "filesize": seg.get("filesize") or seg.get("size") or 0,
+                "entropy": seg.get("entropy") or 0.0,
+            }
+            for seg in raw_segments if isinstance(seg, dict)
+        ]
+        scored = score_segment_entropy(segments)
+        results[a] = {
+            "segments": scored["segments"],
+            "high_entropy_segments": scored["high_entropy_segments"],
+            "packing_suspected": scored["packing_suspected_via_entropy"],
+        }
 
     return {"arch": arch, "segments": results}
 
@@ -371,9 +493,11 @@ def dispatch_tool(features: dict, tool_name: str, tool_input: dict) -> dict:
     """Route tool calls from the agent to the correct implementation."""
     dispatch = {
         "get_feature": lambda: tool_get_feature(features, tool_input.get("feature_path", "")),
-        "search_strings": lambda: tool_search_strings(features, tool_input.get("pattern", "")),
+        "get_strings": lambda: tool_get_strings(features, tool_input.get("pattern", "")),
         "lookup_api_risk": lambda: tool_lookup_api_risk(features, tool_input.get("symbol", "")),
         "check_entitlement": lambda: tool_check_entitlement(features, tool_input.get("key", "")),
+        "get_entitlements": lambda: tool_get_entitlements(features),
+        "get_dylibs": lambda: tool_get_dylibs(features),
         "get_all_imports": lambda: tool_get_all_imports(features, tool_input.get("arch", "all")),
         "check_injection_triad": lambda: tool_check_injection_triad(features),
         "get_segment_entropy": lambda: tool_get_segment_entropy(features, tool_input.get("arch", "all")),

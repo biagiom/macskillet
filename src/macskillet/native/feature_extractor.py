@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-extract_features_native.py — macOS App Static Feature Extractor (Native Edition)
+feature_extractor.py — macOS App Static Feature Extractor (Native Edition)
 
 Uses ONLY tools that ship with macOS:
   codesign, spctl, otool, nm, lipo, strings, xattr, mdls, plutil, file, find, python3
@@ -8,9 +8,9 @@ Uses ONLY tools that ship with macOS:
 No external dependencies. Runs on any macOS 12+ system.
 
 Usage:
-    python3 extract_features_native.py -f /path/to/App.app
-    python3 extract_features_native.py -f /path/to/binary
-    python3 extract_features_native.py --dir /path/to/samples/ -o results.jsonl
+    python3 feature_extractor.py -f /path/to/App.app
+    python3 feature_extractor.py -f /path/to/binary
+    python3 feature_extractor.py --dir /path/to/samples/ -o results.jsonl
 """
 
 import argparse
@@ -24,7 +24,12 @@ import sys
 import tempfile
 from pathlib import Path
 
-from macskillet.native.utils import _entropy
+from macskillet.common.deep_scan import (
+    bucket_candidates, build_deep_scan_result, scan_applescript_item, select_within_limit,
+)
+from macskillet.common.packer_signatures import detect_packer_signatures
+from macskillet.common.strings import extract_strings_of_interest
+from macskillet.common.utils import _entropy
 
 
 # ---------------------------------------------------------------------------
@@ -226,10 +231,25 @@ def analyze_bundle(app_path: str) -> dict:
         if is_macho(fp):
             result["all_binaries"].append(fp)
         ext = os.path.splitext(fp)[1].lower()
-        if ext in (".sh", ".py", ".rb", ".pl", ".js", ".bash"):
+        if ext in (".sh", ".py", ".rb", ".pl", ".js", ".bash", ".scpt", ".applescript", ".command"):
             result["embedded_scripts"].append(fp)
         if os.path.basename(fp).startswith("."):
             result["hidden_files"].append(fp)
+
+    # .scptd script bundles are directories (Contents/Resources/Scripts/main.scpt
+    # inside), not plain files, so `find -type f` above already picked up their
+    # inner main.scpt as a bare .scpt entry. Replace that nested path with the
+    # .scptd bundle path itself, which is the meaningful, user-facing unit.
+    scptd_out, _, _ = run(["find", app_path, "-type", "d", "-name", "*.scptd"], timeout=15)
+    for scptd_dir in scptd_out.splitlines():
+        scptd_dir = scptd_dir.strip()
+        if not scptd_dir:
+            continue
+        prefix = scptd_dir + "/"
+        result["embedded_scripts"] = [
+            p for p in result["embedded_scripts"] if not p.startswith(prefix)
+        ]
+        result["embedded_scripts"].append(scptd_dir)
 
     # Persistence
     for dirpath, label in [
@@ -268,8 +288,8 @@ def analyze_signature(path: str) -> dict:
         "gatekeeper_verdict": "",
         # codesign validates the CodeDirectory hashes and resolves the chain
         # against the system trust store, so results from this path are
-        # cryptographically verified. The cross-platform pipeline reports
-        # "structural" instead. signature_trust.py only grants trust credit on
+        # cryptographically verified. The cross-platform pipeline may report
+        # "unverified" instead. signature_trust.py only grants trust credit on
         # "cryptographic" — see that module for why.
         "verification": "cryptographic",
         "gatekeeper_source": "",
@@ -506,7 +526,7 @@ def analyze_binary(binary_path: str) -> dict:
     result["objc_methods"] = [s for s in method_strings if s and len(s) > 3][:200]
 
     # Strings of interest
-    result["strings_of_interest"] = _extract_suspicious_strings(binary_path)
+    result["strings_of_interest"] = extract_strings_of_interest(binary_path)
 
     return result
 
@@ -536,7 +556,6 @@ def _calculate_segment_entropy(binary_path: str, otool_l_output: str) -> list:
                     "fileoff": fileoff,
                     "filesize": filesize,
                     "entropy": round(ent, 4),
-                    "high_entropy": ent > 7.0,
                 })
             current_seg = line.split()[-1]
             fileoff = filesize = None
@@ -560,7 +579,6 @@ def _calculate_segment_entropy(binary_path: str, otool_l_output: str) -> list:
             "fileoff": fileoff,
             "filesize": filesize,
             "entropy": round(ent, 4),
-            "high_entropy": ent > 7.0,
         })
 
     return segments
@@ -598,46 +616,44 @@ def _extract_strings_from_section(otool_section_output: str) -> list:
     return strings_found
 
 
-SUSPICIOUS_PATTERNS = [
-    (r"https?://[a-zA-Z0-9._/-]{8,}", "url"),
-    (r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "ip_address"),
-    (r"/tmp/[^\s\"']{3,}", "tmp_path"),
-    (r"/var/folders/[^\s\"']{5,}", "temp_path"),
-    (r"LaunchAgents|LaunchDaemons", "persistence"),
-    (r"osascript|applescript", "automation"),
-    (r"(chmod|chown)\s+[0-9+]", "permission_change"),
-    (r"(curl|wget)\s+.*\|\s*(ba)?sh", "download_execute"),
-    (r"VMware|VirtualBox|Parallels|VBOX", "anti_vm"),
-    (r"inject|hooklib|swizzle|method_setImplementation", "injection"),
-    (r"[A-Za-z0-9+/]{40,}={0,2}", "possible_base64"),
-    (r"(keychain|SecKeychainFind)", "keychain_access"),
-]
-
-def _extract_suspicious_strings(binary_path: str) -> list:
-    results = []
-    strings_out, _, _ = run(["strings", "-n", "6", binary_path], timeout=30)
-    # Also get UTF-16 strings
-    strings_utf16, _, _ = run(["strings", "-encoding", "l", "-n", "6", binary_path], timeout=30)
-    all_strings = strings_out + "\n" + strings_utf16
-
-    for line in all_strings.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        for pattern, category in SUSPICIOUS_PATTERNS:
-            if re.search(pattern, line, re.IGNORECASE):
-                risk = "HIGH" if category in ("persistence", "download_execute", "tmp_path", "injection") else "MEDIUM"
-                results.append({"value": line[:250], "category": category, "risk": risk})
-                break
-
-    return results[:100]  # cap to avoid huge outputs
-
-
 # ---------------------------------------------------------------------------
 # Main extraction pipeline
 # ---------------------------------------------------------------------------
 
-def extract(path: str) -> dict:
+def _deep_scan_bundle(bundle_info: dict, main_binary: str | None, deep_limit: int) -> dict:
+    """Statically analyze up to ``deep_limit`` bundle-internal items beyond the main binary.
+
+    Priority: AppleScript files, then dylibs, then other Mach-O binaries (see
+    macskillet.common.deep_scan). Mach-O items reuse analyze_binary() plus a
+    packer-signature scan (catches an embedded PyInstaller/Nuitka-compiled
+    helper binary the same way the main executable would be); AppleScript
+    items use the shared scan_applescript_item() (identical on both pipelines).
+    """
+    buckets = bucket_candidates(
+        bundle_info.get("all_binaries", []),
+        bundle_info.get("embedded_scripts", []),
+        main_binary=main_binary,
+    )
+    selected, skipped_by_kind = select_within_limit(buckets, deep_limit)
+
+    scanned = []
+    for item_path, kind in selected:
+        entry = {"path": item_path, "kind": kind}
+        try:
+            if kind == "applescript":
+                entry["analysis"] = scan_applescript_item(item_path)
+            else:
+                analysis = analyze_binary(item_path)
+                analysis["packer_signatures"] = detect_packer_signatures(item_path)
+                entry["analysis"] = analysis
+        except Exception as e:
+            entry["error"] = str(e)
+        scanned.append(entry)
+
+    return build_deep_scan_result(scanned, skipped_by_kind, deep_limit)
+
+
+def extract(path: str, deep_limit: int | None = None) -> dict:
     path = os.path.abspath(path)
 
     features = {
@@ -654,17 +670,14 @@ def extract(path: str) -> dict:
         "bundle": None,
         "signature": None,
         "binary": None,
-        "clickfix": None,
+        "strings_of_interest": [],
+        "applescript_analysis": {},
         "obfuscation": None,
+        "deep_scan": {"enabled": False},
         "errors": [],
     }
 
     # Import detectors (lazy import — don't fail if files missing)
-    try:
-        from macskillet.native.clickfix_detector import detect_clickfix
-        _has_clickfix = True
-    except ImportError:
-        _has_clickfix = False
     try:
         from macskillet.native.obfuscation_detector import detect_obfuscation
         _has_obfuscation = True
@@ -698,8 +711,15 @@ def extract(path: str) -> dict:
             features["sample"]["md5"] = md5(main_binary)
             features["sample"]["filesize_bytes"] = os.path.getsize(main_binary)
             features["binary"] = analyze_binary(main_binary)
+            features["strings_of_interest"] = features["binary"].pop("strings_of_interest", [])
         else:
             features["errors"].append("Could not locate main executable")
+
+        if deep_limit is not None:
+            try:
+                features["deep_scan"] = _deep_scan_bundle(bundle_info, main_binary, deep_limit)
+            except Exception as e:
+                features["errors"].append(f"Deep scan error: {e}")
 
     elif os.path.isfile(path) and is_macho(path):
         features["sample"]["type"] = "macho_binary"
@@ -709,23 +729,23 @@ def extract(path: str) -> dict:
         features["preflight"] = analyze_preflight(path)
         features["signature"] = analyze_signature(path)
         features["binary"] = analyze_binary(path)
+        features["strings_of_interest"] = features["binary"].pop("strings_of_interest", [])
 
     else:
         features["errors"].append(f"Not a .app bundle or Mach-O binary: {path}")
 
     # Run optional detectors if available
-    if _has_clickfix:
-        try:
-            features["clickfix"] = detect_clickfix(features)
-        except Exception as e:
-            features["errors"].append(f"ClickFix detection error: {e}")
     if _has_obfuscation:
         try:
             features["obfuscation"] = detect_obfuscation(features)
+            features["applescript_analysis"] = features["obfuscation"].pop(
+                "applescript_analysis", {}
+            )
         except Exception as e:
             features["errors"].append(f"Obfuscation detection error: {e}")
-    # Signature-trust must run AFTER clickfix: it reads features["clickfix"]
-    # to revoke the signing trust credit for signed-but-malicious samples.
+    # Signature-trust must run AFTER obfuscation: it reads top-level
+    # features["applescript_analysis"]["runonly_applescript"] to revoke the
+    # signing trust credit for signed-but-malicious samples.
     if _has_signature_trust:
         try:
             features["signature_trust"] = assess_signature_trust(features)

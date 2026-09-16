@@ -81,7 +81,7 @@ def _stub_backend(**overrides) -> Backend:
     defaults = dict(
         name="stub",
         description="test double",
-        _extract=lambda path: {"sample": {"path": path}},
+        _extract=lambda path, deep_limit=None: {"sample": {"path": path}},
         _tools=lambda: [{"name": "get_feature"}],
         _dispatch=lambda features, name, payload: {"ok": name},
         _check=lambda: None,
@@ -96,7 +96,7 @@ def test_extract_stamps_backend_name():
 
 
 def test_extract_stamps_backend_even_without_sample_key():
-    backend = _stub_backend(_extract=lambda path: {})
+    backend = _stub_backend(_extract=lambda path, deep_limit=None: {})
     assert backend.extract("/tmp/x")["sample"]["backend"] == "stub"
 
 
@@ -131,7 +131,7 @@ def test_both_backends_expose_named_tool_schemas():
 # ---------------------------------------------------------------------------
 
 def test_run_mode_rejects_unknown_mode():
-    from macskillet.native.agent_modes import run_mode
+    from macskillet.common.agent_modes import run_mode
 
     with pytest.raises(ValueError) as exc:
         run_mode({}, mode="telepathy")
@@ -139,7 +139,7 @@ def test_run_mode_rejects_unknown_mode():
 
 
 def test_all_modes_registered():
-    from macskillet.native.agent_modes import MODES
+    from macskillet.common.agent_modes import MODES
 
     assert set(MODES) == {"react", "one_shot", "hierarchical", "react_thinking"}
     for func in MODES.values():

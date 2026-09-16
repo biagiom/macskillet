@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tools_native.py — Agent tool implementations backed entirely by macOS native tools.
+tools.py — Agent tool implementations backed entirely by macOS native tools.
 
 Each tool wraps codesign / otool / nm / lipo / strings / xattr / mdls / spctl.
 No third-party libraries required.
@@ -10,6 +10,8 @@ import json
 import re
 import subprocess
 from typing import Any
+
+from macskillet.common.tool_risk_tables import ENTITLEMENT_RISK_DB, SUSPICIOUS_DYLIB_PATTERNS
 
 
 # ---------------------------------------------------------------------------
@@ -75,8 +77,8 @@ TOOLS = [
     {
         "name": "get_segment_entropy",
         "description": (
-            "Get entropy values for each Mach-O segment. "
-            "High entropy (>7.0) in __TEXT suggests packing or obfuscation."
+            "Get entropy values for each Mach-O segment, classified against a "
+            "per-segment-type threshold table. High-entropy segments suggest packing."
         ),
         "input_schema": {"type": "object", "properties": {}, "required": []}
     },
@@ -149,7 +151,7 @@ TOOLS = [
 
 
 # ---------------------------------------------------------------------------
-# Inline API risk DB (same as portable/tool_dispatcher.py)
+# Inline API risk DB (same as portable/tools.py)
 # ---------------------------------------------------------------------------
 
 API_RISK_DB = {
@@ -177,28 +179,6 @@ API_RISK_DB = {
     "chmod": ("MEDIUM", "Change file permissions"),
     "chroot": ("HIGH", "Change root filesystem"),
 }
-
-ENTITLEMENT_RISK_DB = {
-    "com.apple.security.app-sandbox": ("LOW", "Sandboxed app — restricted"),
-    "get-task-allow": ("HIGH", "Debug entitlement in release app"),
-    "com.apple.system-task-ports": ("CRITICAL", "Access to all process task ports"),
-    "com.apple.security.cs.disable-library-validation": ("MEDIUM", "Can load unsigned dylibs"),
-    "com.apple.security.cs.allow-unsigned-executable-memory": ("MEDIUM", "JIT or injection"),
-    "com.apple.security.automation.apple-events": ("LOW", "Can send Apple Events"),
-    "com.apple.security.network.server": ("MEDIUM", "Can listen for connections"),
-    "com.apple.security.files.all": ("HIGH", "Full filesystem access"),
-    "com.apple.private": ("HIGH", "Private Apple entitlement — not for 3rd parties"),
-}
-
-SUSPICIOUS_DYLIB_PATTERNS = [
-    (r"^/tmp/", "CRITICAL", "Loads from /tmp/ — staging path"),
-    (r"^/var/folders/", "HIGH", "Loads from temp folder"),
-    (r"~/", "HIGH", "Loads from user home (unusual for distribution)"),
-    (r"@executable_path/\.", "MEDIUM", "Loads from executable dir (check for hijacking)"),
-    (r"(inject|hook|patch|swizzle)", "HIGH", "Dylib name suggests hooking/injection"),
-    (r"[a-z]{8,}\.(dylib|framework)", "MEDIUM", "Random-looking dylib name"),
-]
-
 
 # ---------------------------------------------------------------------------
 # Tool implementations
@@ -371,20 +351,23 @@ def tool_get_objc_info(features: dict) -> dict:
 
 
 def tool_get_segment_entropy(features: dict) -> dict:
-    binary = features.get("binary", {})
-    if not binary:
-        return {"error": "No binary data"}
-    segments = binary.get("segments", [])
-    high_entropy = [s for s in segments if s.get("high_entropy")]
+    """Reads the per-segment-type classification already computed by the shared
+    common/obfuscation_signals.py scoring core (features["obfuscation"]["entropy_analysis"]),
+    rather than an independent flat entropy threshold."""
+    entropy_analysis = (features.get("obfuscation") or {}).get("entropy_analysis") or {}
+    segments = entropy_analysis.get("segments", [])
+    if not segments:
+        return {"error": "No entropy analysis available"}
+    high_entropy = [s for s in segments if s.get("status") in ("suspicious", "packed")]
     return {
         "segments": segments,
         "high_entropy_segments": high_entropy,
-        "packing_suspected": len(high_entropy) > 0,
+        "packing_suspected": entropy_analysis.get("packing_suspected_via_entropy", False),
     }
 
 
 def tool_get_strings(features: dict, pattern: str) -> dict:
-    strings = features.get("binary", {}).get("strings_of_interest", [])
+    strings = features.get("strings_of_interest", [])
     try:
         regex = re.compile(pattern, re.IGNORECASE)
         matches = [s for s in strings if isinstance(s, dict) and regex.search(s.get("value", ""))]
